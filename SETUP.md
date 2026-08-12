@@ -1,9 +1,9 @@
 # Setup & Deployment — Commercial MGA Quoting
 
-This repo isn't deployed automatically — deploying requires *your* Firebase
-login, which this environment doesn't have. Follow these steps once, from
-your own machine, to get the intake page live on the `commercial-mga-quoting`
-Firebase project.
+Follow these steps once to get the intake page live on the
+`commercial-mga-quoting` Firebase project. Steps 1–3 are one-time Firebase
+Console setup; step 4 covers deploying, either manually from your machine
+or automatically via the GitHub Actions workflow already in this repo.
 
 ## 1. Enable Email/Password sign-in
 
@@ -36,19 +36,16 @@ Fill in `.env.local` with the `apiKey`, `messagingSenderId`, and `appId`
 values from the console (the other fields are already pre-filled to match
 this project).
 
-## 4. Install the Firebase CLI and log in
+## 4. Deploy
+
+Pick one. Both publish `web/dist` to Hosting and push `storage.rules` so
+uploaded files stay private to the uploading user.
+
+### Option A — from your own machine
 
 ```bash
 npm install -g firebase-tools
-firebase login
-```
-
-This must be an account with access to the `commercial-mga-quoting`
-Firebase project.
-
-## 5. Build and deploy
-
-```bash
+firebase login   # must be an account with access to commercial-mga-quoting
 cd web
 npm install
 npm run build
@@ -57,13 +54,46 @@ firebase deploy --only hosting,storage
 ```
 
 `firebase deploy` picks up the project from `.firebaserc` (already set to
-`commercial-mga-quoting`), publishes `web/dist` to Hosting, and pushes
-`storage.rules` so uploaded files stay private to the uploading user.
-
-Firebase will print the Hosting URL when it finishes
+`commercial-mga-quoting`). Firebase prints the Hosting URL when it finishes
 (`https://commercial-mga-quoting.web.app` by default).
 
-## 6. (Recommended) Auto-expire uploaded files
+### Option B — GitHub Actions (deploys automatically)
+
+`.github/workflows/deploy.yml` is already set up: it builds `web/` and runs
+`firebase deploy --only hosting,storage` on every push to `main`, or on
+demand from the Actions tab. One-time setup, all in GitHub/Google Cloud —
+no local CLI needed:
+
+1. **Create a deploy service account.** [Google Cloud Console](https://console.cloud.google.com/iam-admin/serviceaccounts)
+   → select project `commercial-mga-quoting` → **Create service account**
+   (e.g. `github-actions-deploy`). Grant it these two roles:
+   - **Firebase Hosting Admin** (`roles/firebasehosting.admin`)
+   - **Firebase Rules Admin** (`roles/firebaserules.admin`)
+
+   (If deploys fail with a permissions error, granting the broader
+   **Firebase Admin** role instead is the simpler fallback.)
+
+2. **Create a JSON key** for that service account (its page → **Keys** →
+   **Add key** → **Create new key** → JSON) and download it.
+
+3. **Add it as a GitHub secret.** In the repo: **Settings** → **Secrets and
+   variables** → **Actions** → **Secrets** tab → **New repository secret** →
+   name it `FIREBASE_SERVICE_ACCOUNT`, paste the entire JSON file contents.
+   Then delete the downloaded key file from your machine.
+
+4. **Add the web config as GitHub variables** (not secrets — this is the
+   same non-sensitive config from step 3 above, just kept out of git).
+   Same **Secrets and variables** → **Actions** page, **Variables** tab →
+   add one repository variable for each:
+   `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`,
+   `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`,
+   `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`.
+
+5. **Trigger it.** Push/merge to `main`, or go to the **Actions** tab →
+   **Deploy to Firebase** → **Run workflow** to deploy on demand from any
+   branch.
+
+## 5. (Recommended) Auto-expire uploaded files
 
 Right now, submitted files are uploaded to Storage under
 `uploads/{uid}/...` and just sit there — there's no extraction step yet to
