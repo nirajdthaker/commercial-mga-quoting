@@ -4,7 +4,7 @@ import { storage } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import { INDUSTRIES } from "../config/industries";
 
-const ACCEPTED_EXTENSIONS = [".pdf", ".eml"];
+const ACCEPTED_EXTENSIONS = [".pdf", ".eml", ".xlsx", ".csv"];
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 function hasAcceptedExtension(fileName: string): boolean {
@@ -40,7 +40,7 @@ export function Intake() {
     if (!selected) return;
 
     if (!hasAcceptedExtension(selected.name)) {
-      setFileError("Only PDF or EML files are accepted.");
+      setFileError("Only PDF, EML, XLSX, or CSV files are accepted.");
       return;
     }
     if (selected.size > MAX_FILE_BYTES) {
@@ -140,12 +140,12 @@ export function Intake() {
           ))}
         </select>
 
-        <label htmlFor="file">Submission file (PDF or EML)</label>
+        <label htmlFor="file">Submission file (PDF, EML, XLSX, or CSV)</label>
         <input
           id="file"
           ref={fileInputRef}
           type="file"
-          accept=".pdf,.eml,application/pdf,message/rfc822"
+          accept=".pdf,.eml,.xlsx,.csv,application/pdf,message/rfc822,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
           onChange={handleFileChange}
           required
         />
