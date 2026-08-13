@@ -1,6 +1,8 @@
 import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { ref, uploadBytes } from "firebase/storage";
-import { storage } from "../firebase";
+import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { db, storage } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import { INDUSTRIES } from "../config/industries";
 
@@ -70,12 +72,21 @@ export function Intake() {
     const storageRef = ref(storage, path);
 
     try {
-      // File is stored under the signed-in user's own uid so it's ready
-      // for the extraction step to pick up next. Storage rules restrict
-      // read/write to that uid only (see storage.rules). Until the
-      // extraction step exists to consume and clean these up, apply the
-      // bucket lifecycle rule described in SETUP.md to auto-expire them.
+      // File is stored under the signed-in user's own uid. Storage rules
+      // let any signed-in team member read it (needed for review) but only
+      // this user write to their own uploads/{uid}/ path.
       await uploadBytes(storageRef, file, { contentType: file.type || undefined });
+
+      // Creating this doc is what kicks off extraction — a Cloud Function
+      // watches for new submissions docs and picks this one up.
+      await addDoc(collection(db, "submissions"), {
+        industryId: selectedIndustry.id,
+        fileName: file.name,
+        filePath: path,
+        uploadedBy: user.uid,
+        uploadedAt: serverTimestamp(),
+        status: "uploaded",
+      });
 
       setReceivedFileName(file.name);
       setReceivedIndustryLabel(selectedIndustry.label);
@@ -99,7 +110,8 @@ export function Intake() {
             <dd>{receivedFileName}</dd>
           </dl>
           <p className="fine-print">
-            No further processing happens yet — that comes in the next step.
+            Extraction is running in the background. Once it's done, check the{" "}
+            <Link to="/review">review queue</Link> to confirm the extracted data.
           </p>
           <button type="button" onClick={resetForm}>
             Submit another
@@ -117,9 +129,14 @@ export function Intake() {
             <h1>New Submission</h1>
             <p className="subtitle">Florida Coastal Insurance Agency</p>
           </div>
-          <button type="button" className="link-button" onClick={() => void signOut()}>
-            Sign out
-          </button>
+          <div className="header-actions">
+            <Link to="/review" className="link-button">
+              Review queue
+            </Link>
+            <button type="button" className="link-button" onClick={() => void signOut()}>
+              Sign out
+            </button>
+          </div>
         </div>
 
         <label htmlFor="industry">Industry</label>

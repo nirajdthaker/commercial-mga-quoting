@@ -42,6 +42,16 @@ body {
   box-shadow: 0 1px 3px rgba(16, 24, 32, 0.08);
 }
 
+.card-wide {
+  max-width: 860px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
 .header-row {
   display: flex;
   align-items: flex-start;
@@ -70,6 +80,8 @@ label {
 input[type="email"],
 input[type="password"],
 input[type="file"],
+input[type="text"],
+input[type="number"],
 select {
   font-size: 0.95rem;
   padding: 10px 12px;
@@ -149,4 +161,90 @@ button:disabled {
   margin: 2px 0 0;
   font-size: 1rem;
   font-weight: 600;
+}
+
+.submission-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 16px;
+  font-size: 0.88rem;
+}
+
+.submission-table th {
+  text-align: left;
+  font-size: 0.78rem;
+  color: var(--color-muted);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.submission-table td {
+  padding: 10px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.submission-table tr.row-clickable {
+  cursor: pointer;
+}
+
+.submission-table tr.row-clickable:hover {
+  background: var(--color-bg);
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: #e4e9ee;
+  color: var(--color-muted);
+}
+
+.status-extracted {
+  background: #dcebff;
+  color: var(--color-primary);
+}
+
+.status-reviewed {
+  background: #dcf5e3;
+  color: #1e7a3a;
+}
+
+.status-extraction_failed {
+  background: #fbe2e0;
+  color: var(--color-error);
+}
+
+.section-heading {
+  font-size: 1.05rem;
+  margin: 24px 0 4px;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0 16px;
+}
+
+.field-grid-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.location-row {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-top: 12px;
+}
+
+.button-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.button-row button {
+  margin-top: 0;
 }
