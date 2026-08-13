@@ -32,6 +32,17 @@ function parseFieldInput(field: FieldDef, raw: string): FieldValue {
   return raw;
 }
 
+function groupBySection(fields: FieldDef[]): Array<[string, FieldDef[]]> {
+  const groups = new Map<string, FieldDef[]>();
+  for (const f of fields) {
+    if (!groups.has(f.section)) groups.set(f.section, []);
+    groups.get(f.section)!.push(f);
+  }
+  return [...groups.entries()];
+}
+
+const PROFILE_SECTIONS = groupBySection(PROFILE_FIELDS);
+
 export function ReviewDetail() {
   const { submissionId } = useParams<{ submissionId: string }>();
   const { user, signOut } = useAuth();
@@ -151,38 +162,43 @@ export function ReviewDetail() {
             )}
 
             <h2 className="section-heading">Risk Profile</h2>
-            <div className="field-grid">
-              {PROFILE_FIELDS.map((field) => (
-                <div key={field.key} className="field-grid-item">
-                  <label htmlFor={`profile-${field.key}`}>{field.label}</label>
-                  {field.type === "boolean" ? (
-                    <select
-                      id={`profile-${field.key}`}
-                      value={profile[field.key] === true ? "yes" : profile[field.key] === false ? "no" : ""}
-                      disabled={!canEdit}
-                      onChange={(e: ChangeEvent<HTMLSelectElement>) =>
-                        setProfile((prev) => ({
-                          ...prev,
-                          [field.key]: e.target.value === "" ? null : e.target.value === "yes",
-                        }))
-                      }
-                    >
-                      <option value="">—</option>
-                      <option value="yes">Yes</option>
-                      <option value="no">No</option>
-                    </select>
-                  ) : (
-                    <input
-                      id={`profile-${field.key}`}
-                      type={field.type === "number" ? "number" : "text"}
-                      value={inputValue(profile[field.key])}
-                      disabled={!canEdit}
-                      onChange={(e) => handleProfileChange(field, e.target.value)}
-                    />
-                  )}
+            {PROFILE_SECTIONS.map(([section, fields]) => (
+              <details key={section} className="field-section" open>
+                <summary>{section}</summary>
+                <div className="field-grid">
+                  {fields.map((field) => (
+                    <div key={field.key} className="field-grid-item">
+                      <label htmlFor={`profile-${field.key}`}>{field.label}</label>
+                      {field.type === "boolean" ? (
+                        <select
+                          id={`profile-${field.key}`}
+                          value={profile[field.key] === true ? "yes" : profile[field.key] === false ? "no" : ""}
+                          disabled={!canEdit}
+                          onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                            setProfile((prev) => ({
+                              ...prev,
+                              [field.key]: e.target.value === "" ? null : e.target.value === "yes",
+                            }))
+                          }
+                        >
+                          <option value="">—</option>
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      ) : (
+                        <input
+                          id={`profile-${field.key}`}
+                          type={field.type === "number" ? "number" : "text"}
+                          value={inputValue(profile[field.key])}
+                          disabled={!canEdit}
+                          onChange={(e) => handleProfileChange(field, e.target.value)}
+                        />
+                      )}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </details>
+            ))}
 
             <h2 className="section-heading">SOV / Locations</h2>
             {locations.length === 0 && <p className="fine-print">No locations extracted.</p>}

@@ -35,41 +35,59 @@ function coerceValue(raw: unknown, type: FieldDef["type"]): string | number | bo
   return String(raw).trim();
 }
 
-function parseProfileSheet(rows: unknown[][]): ProfileData {
-  const profile: ProfileData = Object.fromEntries(PROFILE_FIELDS.map((f) => [f.key, null]));
+function isEmptyCell(cell: unknown): boolean {
+  return cell === undefined || cell === null || cell === "";
+}
+
+/**
+ * Scans every row of a sheet for "label, value" pairs matching a known
+ * profile field. Section-header rows (a label with no value cell, e.g.
+ * "Applicant Information") are naturally skipped since they have nothing in
+ * column B to match against.
+ */
+function scanProfileFields(rows: unknown[][], profile: ProfileData): void {
   for (const row of rows) {
     const [rawLabel, rawValue] = row;
-    if (rawLabel === undefined || rawLabel === null) continue;
-    const field = matchField(PROFILE_FIELDS, String(rawLabel));
+    if (typeof rawLabel !== "string" || isEmptyCell(rawValue)) continue;
+    const field = matchField(PROFILE_FIELDS, rawLabel);
     if (field) profile[field.key] = coerceValue(rawValue, field.type);
   }
-  return profile;
 }
 
-function parseLocationsTable(rows: unknown[][]): LocationRow[] {
-  if (rows.length === 0) return [];
-  const [headerRow, ...dataRows] = rows;
-  const columns = headerRow.map((h) => (h === undefined || h === null ? undefined : matchField(LOCATION_FIELDS, String(h))));
+function looksLikeSovHeader(row: unknown[]): boolean {
+  const matches = row.filter((cell) => !isEmptyCell(cell) && matchField(LOCATION_FIELDS, String(cell)));
+  return matches.length >= 3;
+}
 
-  return dataRows
-    .filter((row) => row.some((cell) => cell !== undefined && cell !== null && cell !== ""))
-    .map((row) => {
-      const location: LocationRow = Object.fromEntries(LOCATION_FIELDS.map((f) => [f.key, null]));
-      row.forEach((cell, i) => {
-        const field = columns[i];
-        if (field) location[field.key] = coerceValue(cell, field.type);
-      });
-      return location;
+/**
+ * Reads a Statement of Values schedule starting right after its header row.
+ * The real template has no fixed row count ("Add rows as needed — Totals
+ * row updates automatically"), so this reads every row until a "TOTAL"
+ * marker row or the end of the sheet — never a hardcoded limit. Rows that
+ * are just template scaffolding (a location number with no other data, or
+ * only a zero total) are skipped rather than surfaced as empty locations.
+ */
+function parseSovRows(headerRow: unknown[], dataRows: unknown[][]): LocationRow[] {
+  const columns = headerRow.map((h) => (isEmptyCell(h) ? undefined : matchField(LOCATION_FIELDS, String(h))));
+  const locations: LocationRow[] = [];
+
+  for (const row of dataRows) {
+    const firstCell = row[0];
+    if (typeof firstCell === "string" && firstCell.trim().toLowerCase() === "total") break;
+
+    const location: LocationRow = Object.fromEntries(LOCATION_FIELDS.map((f) => [f.key, null]));
+    row.forEach((cell, i) => {
+      const field = columns[i];
+      if (field) location[field.key] = coerceValue(cell, field.type);
     });
-}
 
-function looksLikeLocationsHeader(row: unknown[]): boolean {
-  const matches = row.filter((cell) => cell !== undefined && cell !== null && matchField(LOCATION_FIELDS, String(cell)));
-  return matches.length >= 2;
-}
+    const hasRealData = LOCATION_FIELDS.some(
+      (f) => f.key !== "locationNumber" && location[f.key] !== null && location[f.key] !== 0
+    );
+    if (hasRealData) locations.push(location);
+  }
 
-function findSheet(workbook: XLSX.WorkBook, nameHints: string[]): string | undefined {
-  return workbook.SheetNames.find((name) => nameHints.some((hint) => normalize(name).includes(normalize(hint))));
+  return locations;
 }
 
 function sheetToRows(workbook: XLSX.WorkBook, sheetName: string): unknown[][] {
@@ -78,36 +96,28 @@ function sheetToRows(workbook: XLSX.WorkBook, sheetName: string): unknown[][] {
 }
 
 /**
- * Parses an XLSX or CSV buffer into the extraction schema, purely by reading
- * cells/columns — no AI involved. Looks for a "Risk Profile" sheet (label,
- * value pairs) and a "SOV"/"Locations" sheet (header row + one row per
- * building). CSVs are single-table, so they're classified as a locations
- * table when the header matches multiple location fields, otherwise treated
- * as profile label/value pairs.
+ * Parses an XLSX or CSV buffer into the extraction schema, purely by
+ * reading cells — no AI involved. The real data sheet template is a single
+ * flat sheet mixing "label, value" rows (grouped under section-header rows
+ * that are skipped automatically) with one Statement of Values table
+ * (detected by its header row, e.g. "Loc #, Address, ..."). Every sheet in
+ * the workbook is scanned the same way and merged, so this works whether
+ * the source is one combined sheet (the real template) or split across
+ * multiple sheets.
  */
-export function parseSpreadsheet(buffer: Buffer, fileName: string): ExtractedData {
-  const isCsv = fileName.toLowerCase().endsWith(".csv");
+export function parseSpreadsheet(buffer: Buffer, _fileName: string): ExtractedData {
   const workbook = XLSX.read(buffer, { type: "buffer", raw: true });
   const result = emptyExtractedData();
 
-  if (isCsv) {
-    const rows = sheetToRows(workbook, workbook.SheetNames[0]);
-    if (rows.length > 0 && looksLikeLocationsHeader(rows[0])) {
-      result.locations = parseLocationsTable(rows);
-    } else {
-      result.profile = parseProfileSheet(rows);
+  for (const sheetName of workbook.SheetNames) {
+    const rows = sheetToRows(workbook, sheetName);
+    scanProfileFields(rows, result.profile);
+
+    const headerIndex = rows.findIndex(looksLikeSovHeader);
+    if (headerIndex !== -1) {
+      const locations = parseSovRows(rows[headerIndex], rows.slice(headerIndex + 1));
+      result.locations.push(...locations);
     }
-    return result;
-  }
-
-  const profileSheetName = findSheet(workbook, ["risk profile", "profile"]);
-  if (profileSheetName) {
-    result.profile = parseProfileSheet(sheetToRows(workbook, profileSheetName));
-  }
-
-  const locationsSheetName = findSheet(workbook, ["sov", "locations", "schedule"]);
-  if (locationsSheetName) {
-    result.locations = parseLocationsTable(sheetToRows(workbook, locationsSheetName));
   }
 
   return result;
