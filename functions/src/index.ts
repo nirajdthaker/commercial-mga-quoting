@@ -11,6 +11,8 @@ import { extractFromPdf } from "./extract/claude";
 import { parseSpreadsheet } from "./extract/xlsxCsv";
 import { ExtractedData } from "./schema";
 
+export { sendSubmission } from "./send";
+
 initializeApp();
 
 const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");

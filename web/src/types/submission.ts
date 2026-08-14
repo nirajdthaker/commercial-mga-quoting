@@ -8,6 +8,8 @@ export type SubmissionStatus =
   | "extraction_failed"
   | "reviewed";
 
+export type SendStatus = "sending" | "sent" | "send_failed" | "retry";
+
 export interface Submission {
   industryId: string;
   fileName: string;
@@ -20,4 +22,7 @@ export interface Submission {
   extractionError?: string;
   reviewedBy?: string;
   reviewedAt?: Timestamp;
+  sendStatus?: SendStatus;
+  sendError?: string;
+  sentAt?: Timestamp;
 }

@@ -62,11 +62,31 @@ firebase functions:secrets:set ANTHROPIC_API_KEY
 This is one-time — the deployed function reads it at runtime, and it
 doesn't need to be re-set on future deploys unless the key changes.
 
-## 6. Deploy
+## 6. Enable the Google Drive API and share the ACORDs folder
+
+Filling the ACORD forms and SOV happens in a Cloud Function too, which
+needs to read the blank templates from your Google Drive "ACORDs" folder
+and write the filled copies back. It authenticates as its own Cloud Run
+service account — no separate Google login or OAuth screen needed — but
+that account needs two things:
+
+1. **Enable the Drive API** for the project: visit
+   https://console.cloud.google.com/apis/library/drive.googleapis.com?project=commercial-mga-quoting
+   and click **Enable**.
+2. **Share the "ACORDs" folder (and its parent folder)** in Google Drive
+   with `149910942752-compute@developer.gserviceaccount.com` — right-click
+   the folder → **Share** → paste that email → give it **Editor** access.
+   Share the parent folder too (not just "ACORDs" itself), since the
+   function creates a sibling "ACORD Filled" folder there the first time it
+   runs. No Google sign-in from that address is possible or needed — it's
+   a service identity, sharing with it works the same as sharing with any
+   other Google account.
+
+## 7. Deploy
 
 Pick one. Both publish `web/dist` to Hosting, push `storage.rules` and
-`firestore.rules`/indexes, and deploy the `extractSubmission` Cloud
-Function.
+`firestore.rules`/indexes, and deploy both Cloud Functions
+(`extractSubmission` and `sendSubmission`).
 
 ### Option A — from your own machine
 
@@ -140,7 +160,7 @@ now) — steps 2–5 are the same as last time:
    **Deploy to Firebase** → **Run workflow** to deploy on demand from any
    branch.
 
-## 7. (Safety net) Auto-expire orphaned uploads
+## 8. (Safety net) Auto-expire orphaned uploads
 
 The extraction function deletes each file from Storage itself right after
 it finishes processing it — so in the normal case, nothing lingers. The one
@@ -190,12 +210,28 @@ yours differs (check it in `web/.env.local` /
   them. The source file is deleted from Storage right after extraction
   succeeds.
 - **Hotel field schema** (`functions/src/schema.ts` /
-  `web/src/config/hotelSchema.ts`): a placeholder field list — update both
-  files (they're not shared, so keep them in sync) once the real Hotel
-  data sheet template is finalized.
+  `web/src/config/hotelSchema.ts`): matches the real ACORD data sheet
+  template (~142 fields across ACORD 125/126/130/823-825 Cyber/140, plus
+  an unlimited-row SOV schedule) — update both files (they're not shared,
+  so keep them in sync) if the template changes.
+- **Filling + send** (`functions/src/send.ts`, `functions/src/fill/`):
+  once a submission is confirmed reviewed, a Cloud Function fills ACORD
+  125/126/140 (PDF form fields, via `pdf-lib`) and the SOV Excel template
+  (via `exceljs`), then uploads all four to a Drive "ACORD Filled" folder
+  with the submission ID prefixed onto each filename, followed last by a
+  `{submissionId}_READY.json` manifest — uploaded last on purpose, so
+  Power Automate's folder-watch trigger only fires once every real
+  document is already present. On failure, the Review screen shows the
+  error with a **Retry send** button. Liquor Liability (ACORD 803) and
+  Cyber (823/825) are out of scope until their fillable templates are
+  sorted out — see the note in `functions/src/drive.ts` /
+  `functions/src/send.ts` for what's covered today.
 
 ## What's next
 
-Intake + extraction + human review are done. Still to build: pulling the
-blank ACORD/SOV templates from OneDrive, filling them with the reviewed
-data, and triggering the right Power Automate flow once they're ready.
+Intake, extraction, human review, and filling the ACORD/SOV documents are
+done. What's left: finishing the Power Automate flow itself (watch the
+"ACORD Filled" folder for a `_READY.json` file, look up that submission's
+4 documents by its ID prefix, send the underwriter emails, then archive or
+delete those 5 files) — that part lives entirely in Power Automate, not in
+this repo.

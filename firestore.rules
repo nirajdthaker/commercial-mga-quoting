@@ -29,6 +29,16 @@ service cloud.firestore {
                     && (request.resource.data.status != 'reviewed'
                         || request.resource.data.reviewedBy == request.auth.uid);
 
+      // Retry a failed send: the only sendStatus value a client is ever
+      // allowed to write is the "retry" sentinel, and only after a prior
+      // attempt failed. sendSubmission (Admin SDK) reacts to this write and
+      // takes it from there — see functions/src/send.ts.
+      allow update: if request.auth != null
+                    && resource.data.status == 'reviewed'
+                    && resource.data.sendStatus == 'send_failed'
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sendStatus'])
+                    && request.resource.data.sendStatus == 'retry';
+
       allow delete: if false;
     }
   }

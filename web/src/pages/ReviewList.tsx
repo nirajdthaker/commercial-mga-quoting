@@ -18,6 +18,15 @@ function industryLabel(industryId: string): string {
   return INDUSTRIES.find((i) => i.id === industryId)?.label ?? industryId;
 }
 
+function statusDisplay(data: Submission): { label: string; badgeClass: string } {
+  if (data.status === "reviewed" && data.sendStatus) {
+    if (data.sendStatus === "sending") return { label: "Sending…", badgeClass: "status-reviewed" };
+    if (data.sendStatus === "sent") return { label: "Sent", badgeClass: "status-sent" };
+    if (data.sendStatus === "send_failed") return { label: "Send failed", badgeClass: "status-extraction_failed" };
+  }
+  return { label: STATUS_LABELS[data.status] ?? data.status, badgeClass: `status-${data.status}` };
+}
+
 function formatDate(submission: Submission): string {
   return submission.uploadedAt?.toDate?.().toLocaleString() ?? "—";
 }
@@ -73,6 +82,7 @@ export function ReviewList() {
             <tbody>
               {submissions.map(({ id, data }) => {
                 const reviewable = data.status === "extracted" || data.status === "reviewed";
+                const { label, badgeClass } = statusDisplay(data);
                 return (
                   <tr
                     key={id}
@@ -83,9 +93,7 @@ export function ReviewList() {
                     <td>{data.fileName}</td>
                     <td>{formatDate(data)}</td>
                     <td>
-                      <span className={`status-badge status-${data.status}`}>
-                        {STATUS_LABELS[data.status] ?? data.status}
-                      </span>
+                      <span className={`status-badge ${badgeClass}`}>{label}</span>
                     </td>
                   </tr>
                 );

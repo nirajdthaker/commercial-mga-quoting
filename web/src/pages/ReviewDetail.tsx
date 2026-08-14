@@ -106,6 +106,19 @@ export function ReviewDetail() {
     }
   };
 
+  const retrySend = async () => {
+    if (!submissionId) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await updateDoc(doc(db, "submissions", submissionId), { sendStatus: "retry" });
+    } catch {
+      setSaveError("Couldn't retry the send. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (submission === undefined) {
     return <div className="page-center">Loading…</div>;
   }
@@ -159,6 +172,25 @@ export function ReviewDetail() {
               <p className="notice-text">
                 Reviewed{submission.reviewedAt ? ` on ${submission.reviewedAt.toDate().toLocaleString()}` : ""}.
               </p>
+            )}
+
+            {isReviewed && submission.sendStatus === "sending" && (
+              <p className="notice-text">Sending the filled ACORDs and SOV to Power Automate…</p>
+            )}
+            {isReviewed && submission.sendStatus === "sent" && (
+              <p className="notice-text">
+                Sent{submission.sentAt ? ` on ${submission.sentAt.toDate().toLocaleString()}` : ""}.
+              </p>
+            )}
+            {isReviewed && submission.sendStatus === "send_failed" && (
+              <>
+                <div className="error-text">Send failed: {submission.sendError ?? "unknown error"}</div>
+                <div className="button-row">
+                  <button type="button" onClick={() => void retrySend()} disabled={saving}>
+                    {saving ? "Retrying…" : "Retry send"}
+                  </button>
+                </div>
+              </>
             )}
 
             <h2 className="section-heading">Risk Profile</h2>

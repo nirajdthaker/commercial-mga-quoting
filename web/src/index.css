@@ -211,6 +211,11 @@ button:disabled {
   color: #1e7a3a;
 }
 
+.status-sent {
+  background: #dcf5e3;
+  color: #1e7a3a;
+}
+
 .status-extraction_failed {
   background: #fbe2e0;
   color: var(--color-error);
