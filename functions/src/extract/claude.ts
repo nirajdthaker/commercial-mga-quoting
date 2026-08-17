@@ -103,7 +103,15 @@ async function callClaude(
 const instructions =
   "Extract hotel commercial insurance underwriting data from the attached document into the " +
   `${TOOL_NAME} tool. Use null for any field not present in the document. Do not guess or ` +
-  "fabricate values that aren't actually stated in the document.";
+  "fabricate values that aren't actually stated in the document.\n\n" +
+  "IMPORTANT: the `locations` array feeds a Statement of Values, and must include one entry " +
+  "for every physical building/location this submission covers - including a single property " +
+  "described only in a premises/property information section, not just ones listed in a " +
+  "separate multi-location schedule. A typical single-property hotel submission should produce " +
+  "exactly one entry in `locations`, built from whatever address/building details the document " +
+  "gives (leave individual location fields null if that specific detail isn't stated - but still " +
+  "create the entry). Only return an empty `locations` array if the document truly gives no " +
+  "location-level property details anywhere.";
 
 export async function extractFromPdf(client: Anthropic, pdfBuffer: Buffer): Promise<ExtractedData> {
   return callClaude(client, [
