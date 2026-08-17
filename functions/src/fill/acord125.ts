@@ -1,6 +1,6 @@
-import { PDFDocument } from "pdf-lib";
+import type * as mupdf from "mupdf";
 import { ProfileData } from "../schema";
-import { setCheckbox, setText, setYesNo } from "./pdfHelpers";
+import { loadMupdf, setCheckbox, setText, setYesNoText } from "./pdfHelpers";
 
 const FORM = "ACORD 125";
 
@@ -13,76 +13,74 @@ function splitContact(contact: string | null | undefined): { name: string | null
 function entityCheckboxFor(entityType: string | null | undefined): string | null {
   if (!entityType) return null;
   const t = entityType.toLowerCase();
-  if (t.includes("corp") && t.includes("sub")) return "ni1_ent_SUBCHAPTER";
-  if (t.includes("joint")) return "ni1_ent_JOINT";
-  if (t.includes("not for profit") || t.includes("non-profit") || t.includes("nonprofit")) return "ni1_ent_NOT";
-  if (t.includes("corp")) return "ni1_ent_CORPORATION";
-  if (t.includes("individual")) return "ni1_ent2_INDIVIDUAL";
-  if (t.includes("llc")) return "ni1_ent2_LLC";
-  if (t.includes("partnership")) return "ni1_ent2_PARTNERSHIP";
-  if (t.includes("trust")) return "ni1_ent2_TRUST";
+  if (t.includes("corp") && t.includes("sub")) return "F[0].P1[0].NamedInsured_LegalEntity_SubchapterSCorporationIndicator_A[0]";
+  if (t.includes("joint")) return "F[0].P1[0].NamedInsured_LegalEntity_JointVentureIndicator_A[0]";
+  if (t.includes("not for profit") || t.includes("non-profit") || t.includes("nonprofit")) return "F[0].P1[0].NamedInsured_LegalEntity_NotForProfitIndicator_A[0]";
+  if (t.includes("corp")) return "F[0].P1[0].NamedInsured_LegalEntity_CorporationIndicator_A[0]";
+  if (t.includes("llc") || t.includes("limited liability")) return "F[0].P1[0].NamedInsured_LegalEntity_LimitedLiabilityCorporationIndicator_A[0]";
+  if (t.includes("partnership")) return "F[0].P1[0].NamedInsured_LegalEntity_PartnershipIndicator_A[0]";
+  if (t.includes("trust")) return "F[0].P1[0].NamedInsured_LegalEntity_TrustIndicator_A[0]";
+  if (t.includes("individual")) return "F[0].P1[0].NamedInsured_LegalEntity_IndividualIndicator_A[0]";
   return null;
 }
 
 export async function fillAcord125(templateBytes: Buffer, profile: ProfileData): Promise<Uint8Array> {
-  const doc = await PDFDocument.load(templateBytes);
-  const form = doc.getForm();
+  const mu = await loadMupdf();
+  const doc = mu.Document.openDocument(templateBytes, "application/pdf") as mupdf.PDFDocument;
 
   const contact = splitContact(profile.producerContact as string | null);
 
-  setText(form, FORM, "agency_name_address", profile.producer);
-  setText(form, FORM, "naic_code", profile.naicCode);
-  setText(form, FORM, "contact_name", contact.name);
-  setText(form, FORM, "contact_email", contact.email);
-  setText(form, FORM, "contact_phone", contact.phone);
-  setText(form, FORM, "underwriter", profile.underwriterContact);
+  setText(doc, FORM, "F[0].P1[0].Producer_FullName_A[0]", profile.producer);
+  setText(doc, FORM, "F[0].P1[0].Insurer_NAICCode_A[0]", profile.naicCode);
+  setText(doc, FORM, "F[0].P1[0].Producer_ContactPerson_FullName_A[0]", contact.name);
+  setText(doc, FORM, "F[0].P1[0].Producer_ContactPerson_EmailAddress_A[0]", contact.email);
+  setText(doc, FORM, "F[0].P1[0].Producer_ContactPerson_PhoneNumber_A[0]", contact.phone);
+  setText(doc, FORM, "F[0].P1[0].Insurer_Underwriter_FullName_A[0]", profile.underwriterContact);
 
   const insuredName = [profile.firstNamedInsured, profile.dba ? `DBA ${profile.dba}` : null]
     .filter(Boolean)
     .join(" ");
-  const ni1 = [insuredName || null, profile.mailingAddress].filter(Boolean).join("\n");
-  setText(form, FORM, "ni1_name_address", ni1 || null);
-  setText(form, FORM, "ni2_name_address", profile.otherNamedInsured);
-  setText(form, FORM, "ni1_website", profile.website);
-  setText(form, FORM, "ni1_phone", profile.businessPhone);
-  setText(form, FORM, "ni1_fein", profile.feinNamedInsured1);
-  setText(form, FORM, "ni2_fein", profile.feinNamedInsured2);
-  setText(form, FORM, "ni1_sic", profile.sicCode);
-  setText(form, FORM, "ni1_naics", profile.naicsCode);
-  setText(form, FORM, "date_business_started", profile.dateBusinessStartedInsured1);
+  setText(doc, FORM, "F[0].P1[0].NamedInsured_FullName_A[0]", insuredName || null);
+  setText(doc, FORM, "F[0].P1[0].NamedInsured_MailingAddress_LineOne_A[0]", profile.mailingAddress);
+  setText(doc, FORM, "F[0].P1[0].NamedInsured_FullName_B[0]", profile.otherNamedInsured);
+  setText(doc, FORM, "F[0].P1[0].NamedInsured_Primary_WebsiteAddress_A[0]", profile.website);
+  setText(doc, FORM, "F[0].P1[0].NamedInsured_Primary_PhoneNumber_A[0]", profile.businessPhone);
+  setText(doc, FORM, "F[0].P1[0].NamedInsured_TaxIdentifier_A[0]", profile.feinNamedInsured1);
+  setText(doc, FORM, "F[0].P1[0].NamedInsured_TaxIdentifier_B[0]", profile.feinNamedInsured2);
+  setText(doc, FORM, "F[0].P1[0].NamedInsured_SICCode_A[0]", profile.sicCode);
+  setText(doc, FORM, "F[0].P1[0].NamedInsured_NAICSCode_A[0]", profile.naicsCode);
+  setText(doc, FORM, "F[0].P2[0].NamedInsured_BusinessStartDate_A[0]", profile.dateBusinessStartedInsured1);
 
   const entityField = entityCheckboxFor(profile.entityType as string | null);
-  if (entityField) setCheckbox(form, FORM, entityField, true);
+  if (entityField) setCheckbox(doc, FORM, entityField, true);
 
-  setText(form, FORM, "primary_ops_desc", profile.descriptionOfOperations);
-  setText(form, FORM, "prem1_ops_desc", profile.descriptionOfOperations);
+  setText(doc, FORM, "F[0].P2[0].CommercialPolicy_OperationsDescription_A[0]", profile.descriptionOfOperations);
+  setText(doc, FORM, "F[0].P2[0].BuildingOccupancy_OperationsDescription_A[0]", profile.descriptionOfOperations);
 
   const premisesAddress = (profile.premisesAddress as string | null) || (profile.mailingAddress as string | null);
-  setText(form, FORM, "prem1_street", premisesAddress);
-  setText(form, FORM, "prem1_revenue", profile.totalAnnualRevenue);
-  setText(form, FORM, "prem1_ft_empl", profile.fullTimeEmployees);
-  setText(form, FORM, "prem1_pt_empl", profile.partTimeEmployees);
+  setText(doc, FORM, "F[0].P2[0].CommercialStructure_PhysicalAddress_LineOne_A[0]", premisesAddress);
+  setText(doc, FORM, "F[0].P2[0].CommercialStructure_AnnualRevenueAmount_A[0]", profile.totalAnnualRevenue);
+  setText(doc, FORM, "F[0].P2[0].BusinessInformation_FullTimeEmployeeCount_A[0]", profile.fullTimeEmployees);
+  setText(doc, FORM, "F[0].P2[0].BusinessInformation_PartTimeEmployeeCount_A[0]", profile.partTimeEmployees);
 
-  setText(form, FORM, "proposed_eff_date", profile.proposedEffectiveDate);
-  setText(form, FORM, "proposed_exp_date", profile.proposedExpirationDate);
+  setText(doc, FORM, "F[0].P1[0].Policy_EffectiveDate_A[0]", profile.proposedEffectiveDate);
+  setText(doc, FORM, "F[0].P1[0].Policy_ExpirationDate_A[0]", profile.proposedExpirationDate);
 
   const billingPlan = String(profile.billingPlan ?? "").toLowerCase();
-  if (billingPlan.includes("direct")) setCheckbox(form, FORM, "billing_direct", true);
-  else if (billingPlan.includes("agency") || billingPlan.includes("agcy")) setCheckbox(form, FORM, "billing_agency", true);
+  if (billingPlan.includes("direct")) setCheckbox(doc, FORM, "F[0].P1[0].Policy_Payment_DirectBillIndicator_A[0]", true);
+  else if (billingPlan.includes("agency") || billingPlan.includes("agcy")) setCheckbox(doc, FORM, "F[0].P1[0].Policy_Payment_ProducerBillIndicator_A[0]", true);
 
-  setText(form, FORM, "payment_plan", profile.paymentPlan);
-  setText(form, FORM, "audit", profile.auditBasis);
+  setText(doc, FORM, "F[0].P1[0].Policy_Payment_PaymentScheduleCode_A[0]", profile.paymentPlan);
+  setText(doc, FORM, "F[0].P1[0].Policy_Audit_FrequencyCode_A[0]", profile.auditBasis);
 
-  setText(form, FORM, "prior_PROP_carrier", profile.priorCarrier);
-  setText(form, FORM, "prior_PROP_policy_num", profile.expiringPolicyNumber);
-  setText(form, FORM, "prior_PROP_premium", profile.expiringPremium);
+  setText(doc, FORM, "F[0].P4[0].PriorCoverage_Property_InsurerFullName_B[0]", profile.priorCarrier);
+  setText(doc, FORM, "F[0].P4[0].PriorCoverage_Property_PolicyNumberIdentifier_B[0]", profile.expiringPolicyNumber);
+  setText(doc, FORM, "F[0].P4[0].PriorCoverage_Property_TotalPremiumAmount_B[0]", profile.expiringPremium);
 
-  setYesNo(form, FORM, "q1b_Y", "q1b_N", profile.subsidiariesOrRelatedEntities);
-  setYesNo(form, FORM, "q2_Y", "q2_N", profile.safetyProgramInPlace);
-  setYesNo(form, FORM, "q8_Y", "q8_N", profile.fireSafetyCodeViolations);
-  setYesNo(form, FORM, "q9_Y", "q9_N", profile.bankruptcyHistory);
-  setYesNo(form, FORM, "q12_Y", "q12_N", profile.foreignOperations);
+  setYesNoText(doc, FORM, "F[0].P3[0].CommercialPolicy_Question_AAJCode_A[0]", profile.subsidiariesOrRelatedEntities);
+  setYesNoText(doc, FORM, "F[0].P3[0].CommercialPolicy_Question_AAFCode_A[0]", profile.fireSafetyCodeViolations);
+  setYesNoText(doc, FORM, "F[0].P3[0].CommercialPolicy_Question_KAKCode_A[0]", profile.bankruptcyHistory);
+  setYesNoText(doc, FORM, "F[0].P3[0].CommercialPolicy_Question_KACCode_A[0]", profile.foreignOperations);
 
-  form.updateFieldAppearances();
-  return doc.save();
+  return doc.saveToBuffer("incremental").asUint8Array();
 }

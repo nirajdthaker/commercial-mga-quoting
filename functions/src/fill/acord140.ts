@@ -1,76 +1,73 @@
-import { PDFDocument } from "pdf-lib";
+import type * as mupdf from "mupdf";
 import { ProfileData } from "../schema";
-import { extractTrailingYear, setCheckbox, setText } from "./pdfHelpers";
+import { extractTrailingYear, loadMupdf, setCheckbox, setText, setYesNoText } from "./pdfHelpers";
 
 const FORM = "ACORD 140";
 
 export async function fillAcord140(templateBytes: Buffer, profile: ProfileData): Promise<Uint8Array> {
-  const doc = await PDFDocument.load(templateBytes);
-  const form = doc.getForm();
+  const mu = await loadMupdf();
+  const doc = mu.Document.openDocument(templateBytes, "application/pdf") as mupdf.PDFDocument;
 
-  setText(form, FORM, "agency_name", profile.producer);
-  setText(form, FORM, "naic_code", profile.naicCode);
+  setText(doc, FORM, "F[0].P1[0].Producer_FullName_A[0]", profile.producer);
+  setText(doc, FORM, "F[0].P1[0].Insurer_NAICCode_A[0]", profile.naicCode);
   const insuredName = [profile.firstNamedInsured, profile.dba ? `DBA ${profile.dba}` : null].filter(Boolean).join(" ");
-  setText(form, FORM, "named_insureds", insuredName || null);
-  setText(form, FORM, "effective_date", profile.proposedEffectiveDate);
+  setText(doc, FORM, "F[0].P1[0].NamedInsured_FullName_A[0]", insuredName || null);
+  setText(doc, FORM, "F[0].P1[0].Policy_EffectiveDate_A[0]", profile.proposedEffectiveDate);
 
-  setText(form, FORM, "prem1_address", profile.propertyAddress);
-  setText(form, FORM, "prem1_bldg_num", profile.buildingNumber);
-  setText(form, FORM, "prem1_bldg_desc", profile.buildingDescription ?? profile.occupancy);
+  setText(doc, FORM, "F[0].P1[0].CommercialStructure_PhysicalAddress_LineOne_A[0]", profile.propertyAddress);
+  setText(doc, FORM, "F[0].P1[0].CommercialStructure_Building_ProducerIdentifier_A[0]", profile.buildingNumber);
+  setText(doc, FORM, "F[0].P1[0].CommercialStructure_Building_SublocationDescription_A[0]", profile.buildingDescription ?? profile.occupancy);
 
   // The property schedule is a repeating "subject of insurance" table -
-  // Building / BPP / Business Income each get their own row rather than
-  // separate named fields.
-  setText(form, FORM, "prem1_soi1", "Building");
-  setText(form, FORM, "prem1_amount1", profile.buildingValue);
-  setText(form, FORM, "prem1_coins1", profile.coinsurancePercent);
-  setText(form, FORM, "prem1_valuation1", profile.valuationMethod);
-  setText(form, FORM, "prem1_causes_loss1", profile.causesOfLossForm);
-  setText(form, FORM, "prem1_ded1", profile.deductibleAopWindHail);
+  // Building / BPP / Business Income each get their own lettered row rather
+  // than separate named fields.
+  setText(doc, FORM, "F[0].P1[0].CommercialProperty_Premises_SubjectOfInsuranceCode_A[0]", "Building");
+  setText(doc, FORM, "F[0].P1[0].CommercialProperty_Premises_LimitAmount_A[0]", profile.buildingValue);
+  setText(doc, FORM, "F[0].P1[0].CommercialProperty_Premises_CoinsurancePercent_A[0]", profile.coinsurancePercent);
+  setText(doc, FORM, "F[0].P1[0].CommercialProperty_Premises_ValuationCode_A[0]", profile.valuationMethod);
+  setText(doc, FORM, "F[0].P1[0].CommercialProperty_Premises_CauseOfLossCode_A[0]", profile.causesOfLossForm);
+  setText(doc, FORM, "F[0].P1[0].CommercialProperty_Premises_DeductibleAmount_A[0]", profile.deductibleAopWindHail);
 
   if (profile.bppValue !== null && profile.bppValue !== undefined) {
-    setText(form, FORM, "prem1_soi2", "Business Personal Property");
-    setText(form, FORM, "prem1_amount2", profile.bppValue);
-    setText(form, FORM, "prem1_coins2", profile.coinsurancePercent);
-    setText(form, FORM, "prem1_valuation2", profile.valuationMethod);
+    setText(doc, FORM, "F[0].P1[0].CommercialProperty_Premises_SubjectOfInsuranceCode_B[0]", "Business Personal Property");
+    setText(doc, FORM, "F[0].P1[0].CommercialProperty_Premises_LimitAmount_B[0]", profile.bppValue);
+    setText(doc, FORM, "F[0].P1[0].CommercialProperty_Premises_CoinsurancePercent_B[0]", profile.coinsurancePercent);
+    setText(doc, FORM, "F[0].P1[0].CommercialProperty_Premises_ValuationCode_B[0]", profile.valuationMethod);
   }
 
   if (profile.businessIncomeExtraExpense !== null && profile.businessIncomeExtraExpense !== undefined) {
-    setText(form, FORM, "prem1_soi3", "Business Income / Extra Expense");
-    setText(form, FORM, "prem1_amount3", profile.businessIncomeExtraExpense);
+    setText(doc, FORM, "F[0].P1[0].CommercialProperty_Premises_SubjectOfInsuranceCode_C[0]", "Business Income / Extra Expense");
+    setText(doc, FORM, "F[0].P1[0].CommercialProperty_Premises_LimitAmount_C[0]", profile.businessIncomeExtraExpense);
   }
 
-  const spoilage = String(profile.spoilageCoverage ?? "").trim().toLowerCase();
-  if (spoilage.startsWith("y")) setCheckbox(form, FORM, "spoilage_coverage_Y", true);
-  else if (spoilage.startsWith("n")) setCheckbox(form, FORM, "spoilage_coverage_N", true);
+  setYesNoText(doc, FORM, "F[0].P1[0].CommercialProperty_Spoilage_YesNoCode_A[0]", profile.spoilageCoverage);
 
-  setText(form, FORM, "constr_type", profile.constructionType);
-  setText(form, FORM, "prot_class", profile.protectionClass);
-  setText(form, FORM, "num_stories", profile.numberOfStories);
-  setText(form, FORM, "year_built", profile.yearBuilt);
-  setText(form, FORM, "total_area_sqft", profile.totalArea);
+  setText(doc, FORM, "F[0].P1[0].Construction_ConstructionCode_A[0]", profile.constructionType);
+  setText(doc, FORM, "F[0].P1[0].BuildingFireProtection_ProtectionClassCode_A[0]", profile.protectionClass);
+  setText(doc, FORM, "F[0].P1[0].Construction_StoreyCount_A[0]", profile.numberOfStories);
+  setText(doc, FORM, "F[0].P1[0].CommercialStructure_BuiltYear_A[0]", profile.yearBuilt);
+  setText(doc, FORM, "F[0].P1[0].Construction_BuildingArea_A[0]", profile.totalArea);
 
   const roof = extractTrailingYear(profile.roofTypeAge as string | null);
-  setText(form, FORM, "roof_type", roof.text);
-  setText(form, FORM, "roofing_yr", roof.year);
+  setText(doc, FORM, "F[0].P1[0].Construction_RoofMaterialCode_A[0]", roof.text);
+  setText(doc, FORM, "F[0].P1[0].BuildingImprovement_RoofingYear_A[0]", roof.year);
 
   const updates = extractTrailingYear(profile.plumbingElectricalHvacUpdates as string | null);
   if (updates.year) {
-    setText(form, FORM, "wiring_yr", updates.year);
-    setText(form, FORM, "plumbing_yr", updates.year);
-    setText(form, FORM, "heating_yr", updates.year);
+    setText(doc, FORM, "F[0].P1[0].BuildingImprovement_WiringYear_A[0]", updates.year);
+    setText(doc, FORM, "F[0].P1[0].BuildingImprovement_PlumbingYear_A[0]", updates.year);
+    setText(doc, FORM, "F[0].P1[0].BuildingImprovement_HeatingYear_A[0]", updates.year);
   }
 
   const sprinklered = String(profile.sprinklered ?? "").trim().toLowerCase();
-  if (sprinklered.startsWith("y")) setText(form, FORM, "pct_sprinklered", "100");
-  else if (sprinklered.startsWith("n")) setText(form, FORM, "pct_sprinklered", "0");
+  if (sprinklered.startsWith("y")) setText(doc, FORM, "F[0].P1[0].BuildingFireProtection_Alarm_SprinklerPercent_A[0]", "100");
+  else if (sprinklered.startsWith("n")) setText(doc, FORM, "F[0].P1[0].BuildingFireProtection_Alarm_SprinklerPercent_A[0]", "0");
 
   const fireAlarm = String(profile.fireAlarm ?? "").toLowerCase();
-  if (fireAlarm.includes("central")) setCheckbox(form, FORM, "fire_alarm_central_station", true);
-  else if (fireAlarm.includes("local") || fireAlarm.includes("gong")) setCheckbox(form, FORM, "fire_alarm_local_gong", true);
+  if (fireAlarm.includes("central")) setCheckbox(doc, FORM, "F[0].P1[0].BuildingFireProtection_Alarm_CentralStationIndicator_A[0]", true);
+  else if (fireAlarm.includes("local") || fireAlarm.includes("gong")) setCheckbox(doc, FORM, "F[0].P1[0].BuildingFireProtection_Alarm_LocalGongIndicator_A[0]", true);
 
-  setText(form, FORM, "dist_firestation_mi", profile.distanceToFireHydrantStation);
+  setText(doc, FORM, "F[0].P1[0].BuildingFireProtection_FireStationDistanceMileCount_A[0]", profile.distanceToFireHydrantStation);
 
-  form.updateFieldAppearances();
-  return doc.save();
+  return doc.saveToBuffer("incremental").asUint8Array();
 }

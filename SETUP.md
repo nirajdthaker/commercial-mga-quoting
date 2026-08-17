@@ -216,7 +216,9 @@ yours differs (check it in `web/.env.local` /
   so keep them in sync) if the template changes.
 - **Filling + send** (`functions/src/send.ts`, `functions/src/fill/`):
   once a submission is confirmed reviewed, a Cloud Function fills ACORD
-  125/126/140 (PDF form fields, via `pdf-lib`) and the SOV Excel template
+  125/126/140 (PDF form fields, via `mupdf` — the official ACORD PDFs are
+  RC4-encrypted, which `mupdf` decrypts transparently; `pdf-lib` cannot) and
+  the SOV Excel template
   (via `exceljs`), then uploads all four to a Drive "ACORD Filled" folder
   with the submission ID prefixed onto each filename, followed last by a
   `{submissionId}_READY.json` manifest — uploaded last on purpose, so

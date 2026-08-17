@@ -1,28 +1,53 @@
-import { PDFForm } from "pdf-lib";
+import type * as mupdf from "mupdf";
 import { logger } from "firebase-functions";
 import { FieldValue } from "../schema";
 
-function warnMissing(formName: string, fieldName: string): void {
+/**
+ * mupdf is ESM-only, but this project compiles to CommonJS. TypeScript
+ * lowers a plain `import("mupdf")` to `require("mupdf")` under the
+ * "commonjs" module target, which fails at runtime for an ESM-only
+ * package. Going through `new Function` forces Node's real dynamic
+ * `import()` instead, bypassing that lowering. The loaded module is
+ * cached since it only needs to be resolved once per process.
+ */
+let mupdfModulePromise: Promise<typeof import("mupdf")> | undefined;
+export function loadMupdf(): Promise<typeof import("mupdf")> {
+  if (!mupdfModulePromise) {
+    const dynamicImport = new Function("specifier", "return import(specifier)") as (
+      specifier: string
+    ) => Promise<typeof import("mupdf")>;
+    mupdfModulePromise = dynamicImport("mupdf");
+  }
+  return mupdfModulePromise;
+}
+
+function findWidget(doc: mupdf.PDFDocument, formName: string, fieldName: string): mupdf.PDFWidget | undefined {
+  for (let p = 0; p < doc.countPages(); p++) {
+    const widget = doc.loadPage(p).getWidgets().find((w: mupdf.PDFWidget) => w.getName() === fieldName);
+    if (widget) return widget;
+  }
   logger.warn(`${formName}: expected form field "${fieldName}" not found, skipping`);
+  return undefined;
 }
 
 /** Sets a text field. No-ops on null/undefined so unmapped data leaves the field blank rather than writing "null". */
-export function setText(form: PDFForm, formName: string, fieldName: string, value: FieldValue): void {
+export function setText(doc: mupdf.PDFDocument, formName: string, fieldName: string, value: FieldValue): void {
   if (value === null || value === undefined || value === "") return;
-  try {
-    form.getTextField(fieldName).setText(String(value));
-  } catch {
-    warnMissing(formName, fieldName);
-  }
+  findWidget(doc, formName, fieldName)?.setTextValue(String(value));
 }
 
-export function setCheckbox(form: PDFForm, formName: string, fieldName: string, checked: boolean): void {
-  try {
-    const box = form.getCheckBox(fieldName);
-    if (checked) box.check();
-  } catch {
-    warnMissing(formName, fieldName);
-  }
+/**
+ * Sets a checkbox to a specific state (not a blind toggle - safe to call
+ * regardless of current state). On these official ACORD forms an unchecked
+ * box reads back as "" rather than the more typical "Off" until it has been
+ * toggled at least once, so both are treated as the unchecked state.
+ */
+export function setCheckbox(doc: mupdf.PDFDocument, formName: string, fieldName: string, checked: boolean): void {
+  const widget = findWidget(doc, formName, fieldName);
+  if (!widget) return;
+  const value = widget.getValue();
+  const isChecked = value !== "" && value !== "Off";
+  if (isChecked !== checked) widget.toggle();
 }
 
 const YES_WORDS = ["y", "yes", "true"];
@@ -35,7 +60,7 @@ const NO_WORDS = ["n", "no", "false"];
  * than guessing.
  */
 export function setYesNo(
-  form: PDFForm,
+  doc: mupdf.PDFDocument,
   formName: string,
   yesField: string,
   noField: string,
@@ -43,8 +68,20 @@ export function setYesNo(
 ): void {
   if (value === null || value === undefined) return;
   const firstWord = String(value).trim().toLowerCase().split(/[\s—-]/)[0];
-  if (YES_WORDS.includes(firstWord)) setCheckbox(form, formName, yesField, true);
-  else if (NO_WORDS.includes(firstWord)) setCheckbox(form, formName, noField, true);
+  if (YES_WORDS.includes(firstWord)) setCheckbox(doc, formName, yesField, true);
+  else if (NO_WORDS.includes(firstWord)) setCheckbox(doc, formName, noField, true);
+}
+
+/**
+ * Sets a text field with a plain "Y"/"N" value, used for the official
+ * ACORD forms' Y/N questions - answered as text ("Enter Y for a Yes
+ * response...") rather than a checkbox pair.
+ */
+export function setYesNoText(doc: mupdf.PDFDocument, formName: string, fieldName: string, value: FieldValue): void {
+  if (value === null || value === undefined) return;
+  const firstWord = String(value).trim().toLowerCase().split(/[\s—-]/)[0];
+  if (YES_WORDS.includes(firstWord)) setText(doc, formName, fieldName, "Y");
+  else if (NO_WORDS.includes(firstWord)) setText(doc, formName, fieldName, "N");
 }
 
 /** Splits a "A / B" or "A — B" compound value into two parts. Falls back to putting the whole value in `first` if the delimiter isn't present. */
