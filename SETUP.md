@@ -77,10 +77,11 @@ that account needs two things:
    with `149910942752-compute@developer.gserviceaccount.com` — right-click
    the folder → **Share** → paste that email → give it **Editor** access.
    Share the parent folder too (not just "ACORDs" itself), since the
-   function creates a sibling "ACORD Filled" folder there the first time it
-   runs. No Google sign-in from that address is possible or needed — it's
-   a service identity, sharing with it works the same as sharing with any
-   other Google account.
+   function creates a sibling filled-output folder there the first time it
+   runs for a given industry (e.g. "Hotel ACORD Filled" — see
+   `functions/src/industries.ts`). No Google sign-in from that address is
+   possible or needed — it's a service identity, sharing with it works the
+   same as sharing with any other Google account.
 
 ## 7. Deploy
 
@@ -214,28 +215,38 @@ yours differs (check it in `web/.env.local` /
   template (~142 fields across ACORD 125/126/130/823-825 Cyber/140, plus
   an unlimited-row SOV schedule) — update both files (they're not shared,
   so keep them in sync) if the template changes.
+- **Industries** (`web/src/config/industries.ts`, `functions/src/industries.ts`):
+  the intake dropdown's `id`s (only `hotel` is `enabled` today) map on the
+  functions side to which ACORD forms get filled and which Drive folder
+  they land in — e.g. `hotel` → 125/126/140 → "Hotel ACORD Filled". Each
+  industry gets its own sibling folder next to "ACORDs" so a separate
+  Power Automate flow can watch it in isolation, with no need to inspect
+  file contents to know whether a drop belongs to it. Adding a new
+  industry means adding an entry to both files (and, once its extraction
+  needs diverge from the current ~142-field schema, extending
+  `functions/src/schema.ts` / `web/src/config/hotelSchema.ts`).
 - **Filling + send** (`functions/src/send.ts`, `functions/src/fill/`):
-  once a submission is confirmed reviewed, a Cloud Function fills ACORD
-  125/126/140 (PDF form fields, via `mupdf` — the official ACORD PDFs are
-  RC4-encrypted, which `mupdf` decrypts transparently; `pdf-lib` cannot) and
-  the SOV Excel template (via `exceljs`), then uploads all of it to a Drive
-  "ACORD Filled" folder with the submission ID prefixed onto each filename,
-  followed last by a `{submissionId}_READY.json` manifest — uploaded last on
-  purpose, so Power Automate's folder-watch trigger only fires once every
-  real document is already present. ACORD 130 (Workers' Comp) fills and
-  uploads too, but only when the submission actually carries WC data
-  (`hasWcData()` in `functions/src/fill/acord130.ts`) — most flows through
-  this folder won't, so an all-blank 130 isn't sent alongside them; when it
-  is included, Power Automate's flow needs to be able to cope with a
-  variable file count. On failure, the Review screen shows the error with a
-  **Retry send** button. Liquor Liability (ACORD 803) and Cyber (823/825)
-  are out of scope until their fillable templates are sorted out.
+  once a submission is confirmed reviewed, a Cloud Function looks up its
+  industry, fills that industry's ACORD forms (PDF form fields, via
+  `mupdf` — the official ACORD PDFs are RC4-encrypted, which `mupdf`
+  decrypts transparently; `pdf-lib` cannot — form → template/fill-function
+  lookup lives in `functions/src/fill/registry.ts`) and the SOV Excel
+  template (via `exceljs`), then uploads all of it to that industry's
+  Drive folder with the submission ID prefixed onto each filename,
+  followed last by a `{submissionId}_READY.json` manifest — uploaded last
+  on purpose, so Power Automate's folder-watch trigger only fires once
+  every real document is already present. On failure, the Review screen
+  shows the error with a **Retry send** button. Liquor Liability (ACORD
+  803) and Cyber (823/825) are out of scope until their fillable
+  templates are sorted out.
 
 ## What's next
 
 Intake, extraction, human review, and filling the ACORD/SOV documents are
-done. What's left: finishing the Power Automate flow itself (watch the
-"ACORD Filled" folder for a `_READY.json` file, look up that submission's
-4 documents by its ID prefix, send the underwriter emails, then archive or
-delete those 5 files) — that part lives entirely in Power Automate, not in
-this repo.
+done. What's left: finishing the Power Automate flow itself, one per
+industry (watch that industry's Drive folder for a `_READY.json` file,
+look up that submission's documents by its ID prefix — using the
+manifest's `files` list rather than assuming a fixed count, since it
+varies by industry — send the underwriter emails, then archive or delete
+the files) — that part lives entirely in Power Automate, not in this
+repo.

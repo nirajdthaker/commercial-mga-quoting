@@ -2,11 +2,9 @@ import { FieldValue } from "firebase-admin/firestore";
 import { onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { logger } from "firebase-functions";
 
-import { fillAcord125 } from "./fill/acord125";
-import { fillAcord126 } from "./fill/acord126";
-import { fillAcord130, hasWcData } from "./fill/acord130";
-import { fillAcord140 } from "./fill/acord140";
+import { ACORD_FORMS } from "./fill/registry";
 import { fillSov } from "./fill/sov";
+import { INDUSTRIES } from "./industries";
 import {
   TEMPLATES_FOLDER_ID,
   downloadFile,
@@ -22,6 +20,7 @@ const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.s
 
 interface SubmissionDoc {
   status: string;
+  industryId?: string;
   extractedProfile?: ProfileData;
   extractedLocations?: LocationRow[];
 }
@@ -55,41 +54,36 @@ export const sendSubmission = onDocumentUpdated("submissions/{submissionId}", as
   try {
     await submissionRef.update({ sendStatus: "sending", sendError: FieldValue.delete() });
 
+    const industry = INDUSTRIES[after.industryId ?? ""];
+    if (!industry) {
+      throw new Error(`Unknown industry "${after.industryId ?? ""}" - no ACORD form/folder mapping configured for it`);
+    }
+
     const drive = await getDriveClient();
 
-    // ACORD 130 (Workers' Comp) is only part of the package when the
-    // submission actually carries WC data - most flows through this folder
-    // (e.g. hotel property) won't, and Power Automate shouldn't be handed an
-    // all-blank WC form.
-    const includeWc = hasWcData(profile);
-
-    const [template125, template126, template140, templateSov, template130] = await Promise.all([
-      requireTemplate(drive, "ACORD_125_fillable.pdf"),
-      requireTemplate(drive, "ACORD_126_fillable.pdf"),
-      requireTemplate(drive, "ACORD_140_fillable.pdf"),
+    const [formOutputs, templateSov] = await Promise.all([
+      Promise.all(
+        industry.forms.map(async (formId) => {
+          const { templateName, fill } = ACORD_FORMS[formId];
+          const template = await requireTemplate(drive, templateName);
+          const filled = await fill(template, profile);
+          return { formId, filled };
+        })
+      ),
       requireTemplate(drive, "SOV Commercial.xlsx"),
-      includeWc ? requireTemplate(drive, "ACORD_130_fillable.pdf") : Promise.resolve(null),
     ]);
+    const filledSov = await fillSov(templateSov, profile, locations);
 
-    const [filled125, filled126, filled140, filledSov, filled130] = await Promise.all([
-      fillAcord125(template125, profile),
-      fillAcord126(template126, profile),
-      fillAcord140(template140, profile),
-      fillSov(templateSov, profile, locations),
-      template130 ? fillAcord130(template130, profile) : Promise.resolve(null),
-    ]);
+    const filledFolderId = await findOrCreateSiblingFolder(drive, TEMPLATES_FOLDER_ID, industry.driveFolderName);
 
-    const filledFolderId = await findOrCreateSiblingFolder(drive, TEMPLATES_FOLDER_ID, "ACORD Filled");
-
-    const files: Array<{ name: string; content: Buffer; mimeType: string }> = [
-      { name: `${submissionId}_ACORD_125.pdf`, content: Buffer.from(filled125), mimeType: PDF_MIME },
-      { name: `${submissionId}_ACORD_126.pdf`, content: Buffer.from(filled126), mimeType: PDF_MIME },
-      { name: `${submissionId}_ACORD_140.pdf`, content: Buffer.from(filled140), mimeType: PDF_MIME },
-      { name: `${submissionId}_SOV.xlsx`, content: filledSov, mimeType: XLSX_MIME },
-    ];
-    if (filled130) {
-      files.push({ name: `${submissionId}_ACORD_130.pdf`, content: Buffer.from(filled130), mimeType: PDF_MIME });
-    }
+    const files: Array<{ name: string; content: Buffer; mimeType: string }> = formOutputs.map(
+      ({ formId, filled }) => ({
+        name: `${submissionId}_ACORD_${formId}.pdf`,
+        content: Buffer.from(filled),
+        mimeType: PDF_MIME,
+      })
+    );
+    files.push({ name: `${submissionId}_SOV.xlsx`, content: filledSov, mimeType: XLSX_MIME });
 
     // Uploaded sequentially (not in parallel) so they all definitely land
     // before the manifest below - the manifest's arrival is what Power
@@ -101,6 +95,7 @@ export const sendSubmission = onDocumentUpdated("submissions/{submissionId}", as
 
     const manifest = {
       submissionId,
+      industryId: after.industryId,
       insuredName: profile.firstNamedInsured ?? null,
       effectiveDate: profile.proposedEffectiveDate ?? null,
       insuredAddress: profile.propertyAddress ?? profile.mailingAddress ?? null,

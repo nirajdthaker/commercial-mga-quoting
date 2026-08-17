@@ -4,23 +4,6 @@ import { loadMupdf, setCheckbox, setText, setYesNoText, splitPair } from "./pdfH
 
 const FORM = "ACORD 130";
 
-/** True when the profile actually carries Workers' Comp data worth a filled 130. */
-export function hasWcData(profile: ProfileData): boolean {
-  const wcKeys: Array<keyof ProfileData> = [
-    "wcStatesOfOperation",
-    "wcClassCode1",
-    "wcClassCode2",
-    "wcClassCode3",
-    "experienceModificationFactor",
-    "employersLiabilityLimits",
-    "priorWcCarrier",
-  ];
-  return wcKeys.some((key) => {
-    const value = profile[key];
-    return value !== null && value !== undefined && value !== "";
-  });
-}
-
 export async function fillAcord130(templateBytes: Buffer, profile: ProfileData): Promise<Uint8Array> {
   const mu = await loadMupdf();
   const doc = mu.Document.openDocument(templateBytes, "application/pdf") as mupdf.PDFDocument;
