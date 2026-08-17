@@ -61,6 +61,22 @@ export async function fillSov(templateBytes: Buffer, profile: ProfileData, locat
     if (key) columnFieldByIndex[colNumber] = key;
   });
 
+  // The blank template has a leftover "TOTAL" label baked in a couple of
+  // rows below the header (not necessarily in column 1 - observed sitting
+  // under ADDRESS), presumably left over from whoever designed it. Left
+  // alone, it either sits stranded below a short (or zero-row) fill, or
+  // ends up buried in the middle of real location rows for a longer one.
+  // Clear it - content-based, not position-based, since we can't rely on
+  // it being at a fixed offset from the header.
+  sheet.eachRow((row) => {
+    if (row.number <= headerRow.number) return;
+    let hasTotal = false;
+    row.eachCell((cell) => {
+      if (normalize(String(cell.text ?? "")) === "total") hasTotal = true;
+    });
+    if (hasTotal) row.eachCell((cell) => (cell.value = null));
+  });
+
   const firstDataRowNum = headerRow.number + 1;
   locations.forEach((location, i) => {
     const row = sheet.getRow(firstDataRowNum + i);
