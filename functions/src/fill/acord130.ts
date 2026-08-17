@@ -8,6 +8,7 @@ export async function fillAcord130(templateBytes: Buffer, profile: ProfileData):
   const mu = await loadMupdf();
   const doc = mu.Document.openDocument(templateBytes, "application/pdf") as mupdf.PDFDocument;
 
+  setText(doc, FORM, "F[0].P1[0].Text1[0]", profile.formCompletionDate);
   setText(doc, FORM, "F[0].P1[0].Text2[0]", profile.producer);
   const insuredName = [profile.firstNamedInsured, profile.dba ? `DBA ${profile.dba}` : null].filter(Boolean).join(" ");
   setText(doc, FORM, "F[0].P1[0].Text19[0]", insuredName || null);

@@ -42,6 +42,7 @@ export async function fillAcord125(templateBytes: Buffer, profile: ProfileData):
 
   const contact = splitContact(profile.producerContact as string | null);
 
+  setText(doc, FORM, "F[0].P1[0].Form_CompletionDate_A[0]", profile.formCompletionDate);
   setText(doc, FORM, "F[0].P1[0].Producer_FullName_A[0]", profile.producer);
   setText(doc, FORM, "F[0].P1[0].Insurer_NAICCode_A[0]", profile.naicCode);
   setText(doc, FORM, "F[0].P1[0].Producer_ContactPerson_FullName_A[0]", contact.name);

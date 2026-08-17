@@ -1,4 +1,4 @@
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { logger } from "firebase-functions";
 
@@ -23,8 +23,16 @@ const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.s
 interface SubmissionDoc {
   status: string;
   industryId?: string;
+  uploadedAt?: Timestamp;
   extractedProfile?: ProfileData;
   extractedLocations?: LocationRow[];
+}
+
+/** ACORD's "date the form was completed" field wants MM/DD/YYYY, not a locale-dependent format. */
+function formatMonthDayYear(date: Date): string {
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${mm}/${dd}/${date.getFullYear()}`;
 }
 
 async function requireTemplate(
@@ -63,8 +71,16 @@ export const sendSubmission = onDocumentUpdated(
 
   const submissionRef = event.data.after.ref;
   const submissionId = event.params.submissionId;
-  const profile = after.extractedProfile ?? {};
   const locations = after.extractedLocations ?? [];
+
+  // formCompletionDate isn't part of the reviewed schema - it's the ACORD
+  // "date this form was completed" field, which every form has near the
+  // top and none of them had any data source for. Defaulting it to the
+  // submission's own creation date is more useful than leaving it blank.
+  const profile: ProfileData = {
+    ...(after.extractedProfile ?? {}),
+    formCompletionDate: after.uploadedAt ? formatMonthDayYear(after.uploadedAt.toDate()) : null,
+  };
 
   try {
     // sendStartedAt lets both Firestore rules and the Review UI recognize a

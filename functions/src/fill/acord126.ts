@@ -32,6 +32,7 @@ export async function fillAcord126(templateBytes: Buffer, profile: ProfileData):
   const mu = await loadMupdf();
   const doc = mu.Document.openDocument(templateBytes, "application/pdf") as mupdf.PDFDocument;
 
+  setText(doc, FORM, "F[0].P1[0].Text2[0]", profile.formCompletionDate);
   setText(doc, FORM, "F[0].P1[0].Text3[0]", profile.producer);
   setText(doc, FORM, "F[0].P1[0].Text7[0]", profile.naicCode);
   const insuredName = [profile.firstNamedInsured, profile.dba ? `DBA ${profile.dba}` : null].filter(Boolean).join(" ");
