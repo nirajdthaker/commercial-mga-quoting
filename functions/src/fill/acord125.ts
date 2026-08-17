@@ -10,6 +10,18 @@ function splitContact(contact: string | null | undefined): { name: string | null
   return { name: parts[0] ?? null, email: parts[1] ?? null, phone: parts[2] ?? null };
 }
 
+/**
+ * Source documents often give the premises address as literally "Same" (as
+ * in "same as mailing address") rather than repeating the address - writing
+ * that word into a physical-address field would be wrong, so treat it as
+ * unset and fall back to the mailing address instead.
+ */
+function resolveOrFallback(value: string | null | undefined, fallback: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed || /^same\b/i.test(trimmed)) return (fallback as string | null) ?? null;
+  return trimmed;
+}
+
 function entityCheckboxFor(entityType: string | null | undefined): string | null {
   if (!entityType) return null;
   const t = entityType.toLowerCase();
@@ -57,11 +69,12 @@ export async function fillAcord125(templateBytes: Buffer, profile: ProfileData):
   setText(doc, FORM, "F[0].P2[0].CommercialPolicy_OperationsDescription_A[0]", profile.descriptionOfOperations);
   setText(doc, FORM, "F[0].P2[0].BuildingOccupancy_OperationsDescription_A[0]", profile.descriptionOfOperations);
 
-  const premisesAddress = (profile.premisesAddress as string | null) || (profile.mailingAddress as string | null);
+  const premisesAddress = resolveOrFallback(profile.premisesAddress as string | null, profile.mailingAddress as string | null);
   setText(doc, FORM, "F[0].P2[0].CommercialStructure_PhysicalAddress_LineOne_A[0]", premisesAddress);
   setText(doc, FORM, "F[0].P2[0].CommercialStructure_AnnualRevenueAmount_A[0]", profile.totalAnnualRevenue);
   setText(doc, FORM, "F[0].P2[0].BusinessInformation_FullTimeEmployeeCount_A[0]", profile.fullTimeEmployees);
   setText(doc, FORM, "F[0].P2[0].BusinessInformation_PartTimeEmployeeCount_A[0]", profile.partTimeEmployees);
+  setText(doc, FORM, "F[0].P2[0].Construction_BuildingArea_A[0]", profile.totalArea);
 
   setText(doc, FORM, "F[0].P1[0].Policy_EffectiveDate_A[0]", profile.proposedEffectiveDate);
   setText(doc, FORM, "F[0].P1[0].Policy_ExpirationDate_A[0]", profile.proposedExpirationDate);
