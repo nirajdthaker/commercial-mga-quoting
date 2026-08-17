@@ -1,6 +1,6 @@
 import type * as mupdf from "mupdf";
 import { ProfileData } from "../schema";
-import { extractTrailingYear, loadMupdf, setCheckbox, setText, setYesNoText } from "./pdfHelpers";
+import { extractTrailingYear, isYes, loadMupdf, setCheckbox, setText, setYesNoText } from "./pdfHelpers";
 
 const FORM = "ACORD 140";
 
@@ -42,6 +42,13 @@ export async function fillAcord140(templateBytes: Buffer, profile: ProfileData):
   }
 
   setYesNoText(doc, FORM, "F[0].P1[0].CommercialProperty_Spoilage_YesNoCode_A[0]", profile.spoilageCoverage);
+  // A checkbox indicating the coverage exists, not a Yes/No text field -
+  // only check it when we're actually told it applies. No default here:
+  // unlike a disclosure question, silence shouldn't assert a coverage
+  // exists that we have no evidence of.
+  if (isYes(profile.equipmentBreakdownCoverage)) {
+    setCheckbox(doc, FORM, "F[0].P1[0].CommercialProperty_Premises_BreakdownOrContaminationIndicator_A[0]", true);
+  }
 
   setText(doc, FORM, "F[0].P1[0].Construction_ConstructionCode_A[0]", profile.constructionType);
   setText(doc, FORM, "F[0].P1[0].BuildingFireProtection_ProtectionClassCode_A[0]", profile.protectionClass);

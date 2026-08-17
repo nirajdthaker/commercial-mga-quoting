@@ -1,6 +1,6 @@
 import type * as mupdf from "mupdf";
 import { ProfileData } from "../schema";
-import { loadMupdf, setCheckbox, setText, setYesNoText } from "./pdfHelpers";
+import { isYes, loadMupdf, setCheckbox, setText, setYesNoText } from "./pdfHelpers";
 
 const FORM = "ACORD 125";
 
@@ -99,6 +99,20 @@ export async function fillAcord125(templateBytes: Buffer, profile: ProfileData):
   setYesNoText(doc, FORM, "F[0].P3[0].CommercialPolicy_Question_AAFCode_A[0]", profile.fireSafetyCodeViolations, "N");
   setYesNoText(doc, FORM, "F[0].P3[0].CommercialPolicy_Question_KAKCode_A[0]", profile.bankruptcyHistory, "N");
   setYesNoText(doc, FORM, "F[0].P3[0].CommercialPolicy_Question_KACCode_A[0]", profile.foreignOperations, "N");
+  setYesNoText(doc, FORM, "F[0].P3[0].CommercialPolicy_Question_KAACode_A[0]", profile.safetyProgramInPlace, "N");
+  // "Any policy/coverage declined, cancelled or non-renewed" - the general
+  // (not line-specific) version of this question on the form; our GL
+  // cancellation history is a real instance of that if present.
+  setYesNoText(doc, FORM, "F[0].P3[0].CommercialPolicy_Question_AACCode_A[0]", profile.priorGlCancellations, "N");
+
+  // Loss History section: "No Prior Losses" is a checkbox, the inverse of
+  // a Yes/No answer - checked means no losses. We only have a single
+  // Yes/No signal, not itemized per-claim data for the row-by-row table
+  // that follows it if there were losses, so that table is intentionally
+  // left blank either way (per the "don't fill follow-up detail we don't
+  // have data for" rule) - but the checkbox itself still needs a value,
+  // defaulting to checked/no-losses like the other disclosure questions.
+  setCheckbox(doc, FORM, "F[0].P4[0].LossHistory_NoPriorLossesIndicator_A[0]", !isYes(profile.glClaimsLast3Years));
 
   return doc.saveToBuffer("incremental").asUint8Array();
 }

@@ -53,6 +53,12 @@ export function setCheckbox(doc: mupdf.PDFDocument, formName: string, fieldName:
 const YES_WORDS = ["y", "yes", "true"];
 const NO_WORDS = ["n", "no", "false"];
 
+/** True if a Yes/No-ish value's first word clearly says "yes" - false for anything else, including null/unclear. */
+export function isYes(value: FieldValue): boolean {
+  if (value === null || value === undefined) return false;
+  return YES_WORDS.includes(String(value).trim().toLowerCase().split(/[\s—-]/)[0]);
+}
+
 /**
  * Parses a Yes/No-ish string (possibly with extra explanatory text, e.g.
  * "Yes — Fake Kitchen Ventures LLC...") and checks the matching box. Leaves

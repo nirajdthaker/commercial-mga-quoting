@@ -48,10 +48,16 @@ export async function fillAcord126(templateBytes: Buffer, profile: ProfileData):
   setText(doc, FORM, "F[0].P1[0].Text16[0]", profile.productsCompletedOperationsAggregate);
   setText(doc, FORM, "F[0].P1[0].Text10[0]", profile.glDeductibleSir);
 
+  // Retroactive date only applies to Claims Made policies - Occurrence
+  // policies have no concept of one, so it's only written when Claims
+  // Made actually applies, not whenever a value happens to be present.
   const trigger = String(profile.occurrenceVsClaimsMade ?? "").toLowerCase();
-  if (trigger.includes("occurrence")) setCheckbox(doc, FORM, "F[0].P1[0].Check3[0]", true);
-  else if (trigger.includes("claims")) setCheckbox(doc, FORM, "F[0].P1[0].Check2[0]", true);
-  setText(doc, FORM, "F[0].P1[0].Text128[0]", profile.retroactiveDate);
+  if (trigger.includes("occurrence")) {
+    setCheckbox(doc, FORM, "F[0].P1[0].Check3[0]", true);
+  } else if (trigger.includes("claims")) {
+    setCheckbox(doc, FORM, "F[0].P1[0].Check2[0]", true);
+    setText(doc, FORM, "F[0].P1[0].Text128[0]", profile.retroactiveDate);
+  }
 
   const class1 = splitClassification(profile.glClassification1 as string | null);
   setText(doc, FORM, "F[0].P1[0].Text31[0]", class1.classification);
