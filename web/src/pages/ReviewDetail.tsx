@@ -175,11 +175,12 @@ export function ReviewDetail() {
             )}
 
             {isReviewed && submission.sendStatus === "sending" && (
-              <p className="notice-text">Sending the filled ACORDs and SOV to Power Automate…</p>
+              <p className="notice-text">Filling the ACORDs and SOV and uploading them to Drive…</p>
             )}
             {isReviewed && submission.sendStatus === "sent" && (
               <p className="notice-text">
-                Sent{submission.sentAt ? ` on ${submission.sentAt.toDate().toLocaleString()}` : ""}.
+                Filled ACORDs and SOV uploaded to Drive
+                {submission.sentAt ? ` on ${submission.sentAt.toDate().toLocaleString()}` : ""}.
               </p>
             )}
             {isReviewed && submission.sendStatus === "send_failed" && (

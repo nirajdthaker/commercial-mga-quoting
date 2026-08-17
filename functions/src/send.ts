@@ -34,7 +34,15 @@ async function requireTemplate(
   return downloadFile(drive, fileId);
 }
 
-export const sendSubmission = onDocumentUpdated("submissions/{submissionId}", async (event) => {
+export const sendSubmission = onDocumentUpdated(
+  // Downloading several templates, filling PDFs via mupdf's WASM module
+  // (slow to cold-start), and uploading the results back to Drive
+  // sequentially comfortably exceeds the platform's 60s/256MiB defaults -
+  // bumped generously so a slow cold start doesn't get the instance killed
+  // mid-send, which would leave sendStatus stuck at "sending" forever with
+  // no error ever recorded (the kill happens before the catch block runs).
+  { document: "submissions/{submissionId}", timeoutSeconds: 300, memory: "512MiB" },
+  async (event) => {
   const after = event.data?.after.data() as (SubmissionDoc & { sendStatus?: string }) | undefined;
   if (!after || !event.data) return;
   // sendStatus only ever holds "sending" | "sent" | "send_failed" once this
