@@ -62,30 +62,50 @@ firebase functions:secrets:set ANTHROPIC_API_KEY
 This is one-time — the deployed function reads it at runtime, and it
 doesn't need to be re-set on future deploys unless the key changes.
 
-## 6. Enable the Google Drive API and share the ACORDs folder
+## 6. Enable the Google Drive API and authorize Drive access
 
 Filling the ACORD forms and SOV happens in a Cloud Function too, which
 needs to read the blank templates from your Google Drive "ACORDs" folder
-and write the filled copies back. It authenticates as its own Cloud Run
-service account — no separate Google login or OAuth screen needed — but
-that account needs two things:
+and write the filled copies to each industry's output folder.
+
+This runs as a real Google account via a one-time OAuth authorization,
+**not** the Cloud Function's own service account — service accounts have
+no Drive storage quota of their own, so while they can read files someone
+else owns, they can never create new ones, which breaks every upload this
+function makes. Authorizing as a real account sidesteps that: files it
+creates are owned by that account, the same as if you'd uploaded them by
+hand, and needs no folder-sharing step at all.
 
 1. **Enable the Drive API** for the project: visit
    https://console.cloud.google.com/apis/library/drive.googleapis.com?project=commercial-mga-quoting
    and click **Enable**.
-2. **Share the "ACORDs" folder** in Google Drive with
-   `149910942752-compute@developer.gserviceaccount.com` — right-click the
-   folder → **Share** → paste that email → give it **Editor** access. No
-   Google sign-in from that address is possible or needed — it's a service
-   identity, sharing with it works the same as sharing with any other
-   Google account.
-3. **Create and share each industry's output folder** the same way. These
-   are plain folders you create yourself wherever's convenient (they don't
-   need to be siblings of "ACORDs") — the Cloud Function never creates or
-   discovers them, it only ever writes to a folder ID configured ahead of
-   time in `functions/src/industries.ts`. Sharing "ACORDs" does *not*
-   extend to a folder you create separately, even one sitting right next to
-   it — each one needs its own explicit share with the service account.
+2. **Create an OAuth 2.0 Client ID**: Google Cloud Console →
+   [APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials?project=commercial-mga-quoting)
+   → **Create Credentials** → **OAuth client ID** → application type
+   **Desktop app** → any name. (If prompted to configure an OAuth consent
+   screen first, **External** user type is fine — add the Google account
+   from step 3 as a **test user**; this app never needs Google's
+   verification review since only that one account will ever use it.)
+   Note the **Client ID** and **Client Secret** it gives you.
+3. **Run the one-time authorization**, from a machine with a browser:
+   ```bash
+   cd functions
+   node scripts/get-drive-refresh-token.js <client-id> <client-secret>
+   ```
+   It prints a URL — open it, sign in with the Google account that should
+   own the filled documents (the templates in "ACORDs" and each industry's
+   output folder need to already belong to, or be shared with, this same
+   account), and approve access. Paste the resulting authorization code
+   back into the script; it prints a **refresh token**.
+4. **Store all three as Cloud Functions secrets**:
+   ```bash
+   firebase functions:secrets:set GOOGLE_OAUTH_CLIENT_ID
+   firebase functions:secrets:set GOOGLE_OAUTH_CLIENT_SECRET
+   firebase functions:secrets:set GOOGLE_OAUTH_REFRESH_TOKEN
+   # paste the respective value at each prompt
+   ```
+   One-time, like the Anthropic key in step 5 — doesn't need to be re-set
+   on future deploys unless it's revoked or rotated.
 
 ## 7. Deploy
 

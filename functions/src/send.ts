@@ -5,7 +5,16 @@ import { logger } from "firebase-functions";
 import { ACORD_FORMS } from "./fill/registry";
 import { fillSov } from "./fill/sov";
 import { INDUSTRIES } from "./industries";
-import { TEMPLATES_FOLDER_ID, downloadFile, findFileByName, getDriveClient, uploadFile } from "./drive";
+import {
+  TEMPLATES_FOLDER_ID,
+  downloadFile,
+  findFileByName,
+  getDriveClient,
+  googleOAuthClientId,
+  googleOAuthClientSecret,
+  googleOAuthRefreshToken,
+  uploadFile,
+} from "./drive";
 import { LocationRow, ProfileData } from "./schema";
 
 const PDF_MIME = "application/pdf";
@@ -34,7 +43,12 @@ export const sendSubmission = onDocumentUpdated(
   // bumped generously so a slow cold start doesn't get the instance killed
   // mid-send, which would leave sendStatus stuck at "sending" forever with
   // no error ever recorded (the kill happens before the catch block runs).
-  { document: "submissions/{submissionId}", timeoutSeconds: 300, memory: "512MiB" },
+  {
+    document: "submissions/{submissionId}",
+    timeoutSeconds: 300,
+    memory: "512MiB",
+    secrets: [googleOAuthClientId, googleOAuthClientSecret, googleOAuthRefreshToken],
+  },
   async (event) => {
   const after = event.data?.after.data() as (SubmissionDoc & { sendStatus?: string }) | undefined;
   if (!after || !event.data) return;
