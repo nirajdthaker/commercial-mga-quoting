@@ -23,6 +23,7 @@ export interface Submission {
   reviewedBy?: string;
   reviewedAt?: Timestamp;
   sendStatus?: SendStatus;
+  sendStartedAt?: Timestamp;
   sendError?: string;
   sentAt?: Timestamp;
 }

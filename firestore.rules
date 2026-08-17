@@ -29,13 +29,21 @@ service cloud.firestore {
                     && (request.resource.data.status != 'reviewed'
                         || request.resource.data.reviewedBy == request.auth.uid);
 
-      // Retry a failed send: the only sendStatus value a client is ever
-      // allowed to write is the "retry" sentinel, and only after a prior
-      // attempt failed. sendSubmission (Admin SDK) reacts to this write and
-      // takes it from there — see functions/src/send.ts.
+      // Retry a send: the only sendStatus value a client is ever allowed to
+      // write is the "retry" sentinel, and only after a prior attempt
+      // either failed outright, or has been "sending" long enough that it
+      // was clearly killed mid-flight without ever reaching the catch block
+      // that would have recorded a real error (sendSubmission's own timeout
+      // is 300s - 6 minutes gives a comfortable margin so this can't race a
+      // send that's still legitimately in progress). sendSubmission (Admin
+      // SDK) reacts to either case and takes it from there — see
+      // functions/src/send.ts.
       allow update: if request.auth != null
                     && resource.data.status == 'reviewed'
-                    && resource.data.sendStatus == 'send_failed'
+                    && (resource.data.sendStatus == 'send_failed'
+                        || (resource.data.sendStatus == 'sending'
+                            && resource.data.sendStartedAt is timestamp
+                            && request.time > resource.data.sendStartedAt + duration.value(6, 'm')))
                     && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sendStatus'])
                     && request.resource.data.sendStatus == 'retry';
 

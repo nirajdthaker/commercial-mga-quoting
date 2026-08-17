@@ -60,7 +60,16 @@ export const sendSubmission = onDocumentUpdated(
   const locations = after.extractedLocations ?? [];
 
   try {
-    await submissionRef.update({ sendStatus: "sending", sendError: FieldValue.delete() });
+    // sendStartedAt lets both Firestore rules and the Review UI recognize a
+    // "sending" that's gone stale (the function got killed mid-flight
+    // without ever reaching the catch block below) and offer a retry,
+    // rather than leaving the submission stuck forever. Written fresh on
+    // every attempt, including retries.
+    await submissionRef.update({
+      sendStatus: "sending",
+      sendStartedAt: FieldValue.serverTimestamp(),
+      sendError: FieldValue.delete(),
+    });
 
     const industry = INDUSTRIES[after.industryId ?? ""];
     if (!industry) {

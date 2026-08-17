@@ -43,6 +43,12 @@ function groupBySection(fields: FieldDef[]): Array<[string, FieldDef[]]> {
 
 const PROFILE_SECTIONS = groupBySection(PROFILE_FIELDS);
 
+// Firestore rules allow retrying a "sending" submission once it's been
+// stuck for 6 minutes (sendSubmission's own timeout is 300s/5min) - this is
+// set a minute past that so the button never appears before the rule would
+// actually accept the write.
+const STALE_SENDING_MS = 7 * 60 * 1000;
+
 export function ReviewDetail() {
   const { submissionId } = useParams<{ submissionId: string }>();
   const { user, signOut } = useAuth();
@@ -54,6 +60,7 @@ export function ReviewDetail() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [initialized, setInitialized] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     if (!submissionId) return;
@@ -72,6 +79,15 @@ export function ReviewDetail() {
     });
     return unsubscribe;
   }, [submissionId, initialized]);
+
+  // Ticks while a send is in flight so a stuck "sending" (the function was
+  // killed mid-flight and never got to record an error) surfaces a retry
+  // option on its own, without needing a page refresh to notice.
+  useEffect(() => {
+    if (submission?.sendStatus !== "sending") return;
+    const interval = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(interval);
+  }, [submission?.sendStatus]);
 
   const handleProfileChange = (field: FieldDef, raw: string) => {
     setProfile((prev) => ({ ...prev, [field.key]: parseFieldInput(field, raw) }));
@@ -139,6 +155,10 @@ export function ReviewDetail() {
 
   const isReviewed = submission.status === "reviewed";
   const canEdit = submission.status === "extracted";
+  const isStaleSending =
+    submission.sendStatus === "sending" &&
+    !!submission.sendStartedAt &&
+    now - submission.sendStartedAt.toDate().getTime() > STALE_SENDING_MS;
 
   return (
     <div className="page-center">
@@ -174,8 +194,20 @@ export function ReviewDetail() {
               </p>
             )}
 
-            {isReviewed && submission.sendStatus === "sending" && (
+            {isReviewed && submission.sendStatus === "sending" && !isStaleSending && (
               <p className="notice-text">Filling the ACORDs and SOV and uploading them to Drive…</p>
+            )}
+            {isReviewed && submission.sendStatus === "sending" && isStaleSending && (
+              <>
+                <p className="notice-text">
+                  This is taking much longer than expected and may have failed silently.
+                </p>
+                <div className="button-row">
+                  <button type="button" onClick={() => void retrySend()} disabled={saving}>
+                    {saving ? "Retrying…" : "Retry send"}
+                  </button>
+                </div>
+              </>
             )}
             {isReviewed && submission.sendStatus === "sent" && (
               <p className="notice-text">
