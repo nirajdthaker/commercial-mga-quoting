@@ -35,7 +35,7 @@ function buildToolSchema() {
         },
         locations: {
           type: "array",
-          description: "One entry per building/location (Statement of Values). Empty array if the document describes only a single location and no separate schedule is present.",
+          description: "One entry per physical building/location covered by this submission, for the Statement of Values - always include an entry for every location, including a single one described only in a premises/property section rather than a separate multi-location schedule. Only an empty array if the document genuinely gives no location-level property details at all (e.g. it names no address or building specs anywhere).",
           items: {
             type: "object",
             properties: locationProperties,
