@@ -4,6 +4,7 @@ import { logger } from "firebase-functions";
 
 import { fillAcord125 } from "./fill/acord125";
 import { fillAcord126 } from "./fill/acord126";
+import { fillAcord130, hasWcData } from "./fill/acord130";
 import { fillAcord140 } from "./fill/acord140";
 import { fillSov } from "./fill/sov";
 import {
@@ -56,18 +57,26 @@ export const sendSubmission = onDocumentUpdated("submissions/{submissionId}", as
 
     const drive = await getDriveClient();
 
-    const [template125, template126, template140, templateSov] = await Promise.all([
+    // ACORD 130 (Workers' Comp) is only part of the package when the
+    // submission actually carries WC data - most flows through this folder
+    // (e.g. hotel property) won't, and Power Automate shouldn't be handed an
+    // all-blank WC form.
+    const includeWc = hasWcData(profile);
+
+    const [template125, template126, template140, templateSov, template130] = await Promise.all([
       requireTemplate(drive, "ACORD_125_fillable.pdf"),
       requireTemplate(drive, "ACORD_126_fillable.pdf"),
       requireTemplate(drive, "ACORD_140_fillable.pdf"),
       requireTemplate(drive, "SOV Commercial.xlsx"),
+      includeWc ? requireTemplate(drive, "ACORD_130_fillable.pdf") : Promise.resolve(null),
     ]);
 
-    const [filled125, filled126, filled140, filledSov] = await Promise.all([
+    const [filled125, filled126, filled140, filledSov, filled130] = await Promise.all([
       fillAcord125(template125, profile),
       fillAcord126(template126, profile),
       fillAcord140(template140, profile),
       fillSov(templateSov, profile, locations),
+      template130 ? fillAcord130(template130, profile) : Promise.resolve(null),
     ]);
 
     const filledFolderId = await findOrCreateSiblingFolder(drive, TEMPLATES_FOLDER_ID, "ACORD Filled");
@@ -78,6 +87,9 @@ export const sendSubmission = onDocumentUpdated("submissions/{submissionId}", as
       { name: `${submissionId}_ACORD_140.pdf`, content: Buffer.from(filled140), mimeType: PDF_MIME },
       { name: `${submissionId}_SOV.xlsx`, content: filledSov, mimeType: XLSX_MIME },
     ];
+    if (filled130) {
+      files.push({ name: `${submissionId}_ACORD_130.pdf`, content: Buffer.from(filled130), mimeType: PDF_MIME });
+    }
 
     // Uploaded sequentially (not in parallel) so they all definitely land
     // before the manifest below - the manifest's arrival is what Power

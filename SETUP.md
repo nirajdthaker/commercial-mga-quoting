@@ -218,16 +218,18 @@ yours differs (check it in `web/.env.local` /
   once a submission is confirmed reviewed, a Cloud Function fills ACORD
   125/126/140 (PDF form fields, via `mupdf` — the official ACORD PDFs are
   RC4-encrypted, which `mupdf` decrypts transparently; `pdf-lib` cannot) and
-  the SOV Excel template
-  (via `exceljs`), then uploads all four to a Drive "ACORD Filled" folder
-  with the submission ID prefixed onto each filename, followed last by a
-  `{submissionId}_READY.json` manifest — uploaded last on purpose, so
-  Power Automate's folder-watch trigger only fires once every real
-  document is already present. On failure, the Review screen shows the
-  error with a **Retry send** button. Liquor Liability (ACORD 803) and
-  Cyber (823/825) are out of scope until their fillable templates are
-  sorted out — see the note in `functions/src/drive.ts` /
-  `functions/src/send.ts` for what's covered today.
+  the SOV Excel template (via `exceljs`), then uploads all of it to a Drive
+  "ACORD Filled" folder with the submission ID prefixed onto each filename,
+  followed last by a `{submissionId}_READY.json` manifest — uploaded last on
+  purpose, so Power Automate's folder-watch trigger only fires once every
+  real document is already present. ACORD 130 (Workers' Comp) fills and
+  uploads too, but only when the submission actually carries WC data
+  (`hasWcData()` in `functions/src/fill/acord130.ts`) — most flows through
+  this folder won't, so an all-blank 130 isn't sent alongside them; when it
+  is included, Power Automate's flow needs to be able to cope with a
+  variable file count. On failure, the Review screen shows the error with a
+  **Retry send** button. Liquor Liability (ACORD 803) and Cyber (823/825)
+  are out of scope until their fillable templates are sorted out.
 
 ## What's next
 
