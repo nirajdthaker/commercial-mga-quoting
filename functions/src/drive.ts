@@ -32,12 +32,18 @@ export async function findFileByName(
     q: `'${folderId}' in parents and name = '${escaped}' and trashed = false`,
     fields: "files(id, name)",
     pageSize: 1,
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+    corpora: "allDrives",
   });
   return res.data.files?.[0]?.id ?? undefined;
 }
 
 export async function downloadFile(drive: drive_v3.Drive, fileId: string): Promise<Buffer> {
-  const res = await drive.files.get({ fileId, alt: "media" }, { responseType: "arraybuffer" });
+  const res = await drive.files.get(
+    { fileId, alt: "media", supportsAllDrives: true },
+    { responseType: "arraybuffer" }
+  );
   return Buffer.from(res.data as ArrayBuffer);
 }
 
@@ -46,7 +52,11 @@ export async function findOrCreateSiblingFolder(
   siblingFolderId: string,
   name: string
 ): Promise<string> {
-  const sibling = await drive.files.get({ fileId: siblingFolderId, fields: "parents" });
+  const sibling = await drive.files.get({
+    fileId: siblingFolderId,
+    fields: "parents",
+    supportsAllDrives: true,
+  });
   const parentId = sibling.data.parents?.[0];
   if (!parentId) throw new Error(`Could not determine parent folder of ${siblingFolderId}`);
 
@@ -56,6 +66,7 @@ export async function findOrCreateSiblingFolder(
   const created = await drive.files.create({
     requestBody: { name, mimeType: "application/vnd.google-apps.folder", parents: [parentId] },
     fields: "id",
+    supportsAllDrives: true,
   });
   if (!created.data.id) throw new Error(`Failed to create folder "${name}"`);
   return created.data.id;
@@ -72,6 +83,7 @@ export async function uploadFile(
     requestBody: { name, parents: [folderId] },
     media: { mimeType, body: bufferToStream(content) },
     fields: "id",
+    supportsAllDrives: true,
   });
 }
 
