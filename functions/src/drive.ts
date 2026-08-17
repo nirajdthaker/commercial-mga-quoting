@@ -11,9 +11,10 @@ let cachedClient: drive_v3.Drive | undefined;
 /**
  * Authenticates as the Cloud Function's own runtime service account
  * (Application Default Credentials - no key file needed). That service
- * account must be shared as an Editor on the ACORDs folder (and its parent,
- * so it can create the sibling "ACORD Filled" folder) from the Google Drive
- * UI, the same way you'd share a folder with any other Google account.
+ * account must be shared as an Editor on the ACORDs folder, and on each
+ * industry's output folder (see functions/src/industries.ts), from the
+ * Google Drive UI - the same way you'd share a folder with any other
+ * Google account.
  */
 export async function getDriveClient(): Promise<drive_v3.Drive> {
   if (cachedClient) return cachedClient;
@@ -45,31 +46,6 @@ export async function downloadFile(drive: drive_v3.Drive, fileId: string): Promi
     { responseType: "arraybuffer" }
   );
   return Buffer.from(res.data as ArrayBuffer);
-}
-
-export async function findOrCreateSiblingFolder(
-  drive: drive_v3.Drive,
-  siblingFolderId: string,
-  name: string
-): Promise<string> {
-  const sibling = await drive.files.get({
-    fileId: siblingFolderId,
-    fields: "parents",
-    supportsAllDrives: true,
-  });
-  const parentId = sibling.data.parents?.[0];
-  if (!parentId) throw new Error(`Could not determine parent folder of ${siblingFolderId}`);
-
-  const existing = await findFileByName(drive, parentId, name);
-  if (existing) return existing;
-
-  const created = await drive.files.create({
-    requestBody: { name, mimeType: "application/vnd.google-apps.folder", parents: [parentId] },
-    fields: "id",
-    supportsAllDrives: true,
-  });
-  if (!created.data.id) throw new Error(`Failed to create folder "${name}"`);
-  return created.data.id;
 }
 
 export async function uploadFile(

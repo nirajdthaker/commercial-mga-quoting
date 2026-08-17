@@ -5,14 +5,7 @@ import { logger } from "firebase-functions";
 import { ACORD_FORMS } from "./fill/registry";
 import { fillSov } from "./fill/sov";
 import { INDUSTRIES } from "./industries";
-import {
-  TEMPLATES_FOLDER_ID,
-  downloadFile,
-  findFileByName,
-  findOrCreateSiblingFolder,
-  getDriveClient,
-  uploadFile,
-} from "./drive";
+import { TEMPLATES_FOLDER_ID, downloadFile, findFileByName, getDriveClient, uploadFile } from "./drive";
 import { LocationRow, ProfileData } from "./schema";
 
 const PDF_MIME = "application/pdf";
@@ -91,7 +84,7 @@ export const sendSubmission = onDocumentUpdated(
     ]);
     const filledSov = await fillSov(templateSov, profile, locations);
 
-    const filledFolderId = await findOrCreateSiblingFolder(drive, TEMPLATES_FOLDER_ID, industry.driveFolderName);
+    const filledFolderId = industry.driveFolderId;
 
     const files: Array<{ name: string; content: Buffer; mimeType: string }> = formOutputs.map(
       ({ formId, filled }) => ({
