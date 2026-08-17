@@ -15,6 +15,19 @@ function splitClassification(value: string | null | undefined): { classification
   };
 }
 
+/**
+ * A real ISO class code is a short single token (e.g. "16910"). When one
+ * hasn't actually been assigned, extraction sometimes captures an
+ * explanatory note instead (e.g. "GAP - underwriter assigned") - writing
+ * that into the Class Code column is worse than leaving it blank, since the
+ * column's too narrow for anything but a real code.
+ */
+function looksLikeClassCode(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const trimmed = value.trim();
+  return trimmed.length > 0 && trimmed.length <= 10 && !/\s/.test(trimmed);
+}
+
 export async function fillAcord126(templateBytes: Buffer, profile: ProfileData): Promise<Uint8Array> {
   const mu = await loadMupdf();
   const doc = mu.Document.openDocument(templateBytes, "application/pdf") as mupdf.PDFDocument;
@@ -43,7 +56,8 @@ export async function fillAcord126(templateBytes: Buffer, profile: ProfileData):
   setText(doc, FORM, "F[0].P1[0].Text31[0]", class1.classification);
   setText(doc, FORM, "F[0].P1[0].Text33[0]", class1.basis);
   setText(doc, FORM, "F[0].P1[0].Text34[0]", class1.amount);
-  setText(doc, FORM, "F[0].P1[0].Text32[0]", profile.isoClassificationCodes);
+  const isoCode = profile.isoClassificationCodes as string | null;
+  setText(doc, FORM, "F[0].P1[0].Text32[0]", looksLikeClassCode(isoCode) ? isoCode : null);
 
   const class2 = splitClassification(profile.glClassification2 as string | null);
   setText(doc, FORM, "F[0].P1[0].Text42[0]", class2.classification);
