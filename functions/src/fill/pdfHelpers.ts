@@ -75,13 +75,24 @@ export function setYesNo(
 /**
  * Sets a text field with a plain "Y"/"N" value, used for the official
  * ACORD forms' Y/N questions - answered as text ("Enter Y for a Yes
- * response...") rather than a checkbox pair.
+ * response...") rather than a checkbox pair. When the reviewed data doesn't
+ * clearly answer the question (missing, or text that doesn't start with
+ * yes/no), falls back to defaultAnswer if one is given - callers should
+ * only pass one where the question is the disclosure kind where silence
+ * conventionally means "no" (violations, incidents, exposures that would
+ * always be flagged if true), never for a genuinely unknowable default.
  */
-export function setYesNoText(doc: mupdf.PDFDocument, formName: string, fieldName: string, value: FieldValue): void {
-  if (value === null || value === undefined) return;
-  const firstWord = String(value).trim().toLowerCase().split(/[\s—-]/)[0];
+export function setYesNoText(
+  doc: mupdf.PDFDocument,
+  formName: string,
+  fieldName: string,
+  value: FieldValue,
+  defaultAnswer?: "Y" | "N"
+): void {
+  const firstWord = value === null || value === undefined ? "" : String(value).trim().toLowerCase().split(/[\s—-]/)[0];
   if (YES_WORDS.includes(firstWord)) setText(doc, formName, fieldName, "Y");
   else if (NO_WORDS.includes(firstWord)) setText(doc, formName, fieldName, "N");
+  else if (defaultAnswer) setText(doc, formName, fieldName, defaultAnswer);
 }
 
 /** Splits a "A / B" or "A — B" compound value into two parts. Falls back to putting the whole value in `first` if the delimiter isn't present. */

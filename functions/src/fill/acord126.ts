@@ -65,15 +65,22 @@ export async function fillAcord126(templateBytes: Buffer, profile: ProfileData):
   setText(doc, FORM, "F[0].P1[0].Text44[0]", class2.basis);
   setText(doc, FORM, "F[0].P1[0].Text45[0]", class2.amount);
 
-  setYesNoText(doc, FORM, "F[0].P2[0].Text49[0]", profile.productsRecallExposure);
+  // Disclosure-style question - silence conventionally means "no" (a
+  // recall would always be mentioned when it happened), so default to N.
+  setYesNoText(doc, FORM, "F[0].P2[0].Text49[0]", profile.productsRecallExposure, "N");
   // No field on this form fits a free-text description of subcontracted
   // work - Text15[0] is a numeric "% of work subcontracted" field, not a
   // description, so subcontractedWork is intentionally left unmapped here
   // rather than writing text into a percentage field.
   setText(doc, FORM, "F[0].P3[0].Text4[0]", profile.additionalInsuredsCertHolders);
 
-  setYesNoText(doc, FORM, "F[0].P3[0].Text28[0]", profile.watercraftPoolsOnPremises);
-  setYesNoText(doc, FORM, "F[0].P3[0].Text36[0]", profile.watercraftPoolsOnPremises);
+  // One reviewed field answers two distinct form questions (watercraft and
+  // swimming pool) - both default to N absent other info. Note this is the
+  // one default in this file worth double-checking per submission: hotels
+  // commonly do have pools, so a real "yes" here is far more likely than
+  // for the other disclosure-style questions on this page.
+  setYesNoText(doc, FORM, "F[0].P3[0].Text28[0]", profile.watercraftPoolsOnPremises, "N");
+  setYesNoText(doc, FORM, "F[0].P3[0].Text36[0]", profile.watercraftPoolsOnPremises, "N");
 
   return doc.saveToBuffer("incremental").asUint8Array();
 }

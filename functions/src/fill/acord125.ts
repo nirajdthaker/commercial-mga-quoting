@@ -91,10 +91,14 @@ export async function fillAcord125(templateBytes: Buffer, profile: ProfileData):
   setText(doc, FORM, "F[0].P4[0].PriorCoverage_Property_PolicyNumberIdentifier_B[0]", profile.expiringPolicyNumber);
   setText(doc, FORM, "F[0].P4[0].PriorCoverage_Property_TotalPremiumAmount_B[0]", profile.expiringPremium);
 
-  setYesNoText(doc, FORM, "F[0].P3[0].CommercialPolicy_Question_AAJCode_A[0]", profile.subsidiariesOrRelatedEntities);
-  setYesNoText(doc, FORM, "F[0].P3[0].CommercialPolicy_Question_AAFCode_A[0]", profile.fireSafetyCodeViolations);
-  setYesNoText(doc, FORM, "F[0].P3[0].CommercialPolicy_Question_KAKCode_A[0]", profile.bankruptcyHistory);
-  setYesNoText(doc, FORM, "F[0].P3[0].CommercialPolicy_Question_KACCode_A[0]", profile.foreignOperations);
+  // These are disclosure-style questions - silence in the source document
+  // conventionally means "no" (violations, bankruptcies, subsidiaries, and
+  // foreign operations are always mentioned when they exist), so an
+  // unanswered question defaults to N rather than being left blank.
+  setYesNoText(doc, FORM, "F[0].P3[0].CommercialPolicy_Question_AAJCode_A[0]", profile.subsidiariesOrRelatedEntities, "N");
+  setYesNoText(doc, FORM, "F[0].P3[0].CommercialPolicy_Question_AAFCode_A[0]", profile.fireSafetyCodeViolations, "N");
+  setYesNoText(doc, FORM, "F[0].P3[0].CommercialPolicy_Question_KAKCode_A[0]", profile.bankruptcyHistory, "N");
+  setYesNoText(doc, FORM, "F[0].P3[0].CommercialPolicy_Question_KACCode_A[0]", profile.foreignOperations, "N");
 
   return doc.saveToBuffer("incremental").asUint8Array();
 }
