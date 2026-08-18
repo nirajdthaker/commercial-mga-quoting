@@ -8,8 +8,8 @@ import Anthropic from "@anthropic-ai/sdk";
 
 import { extractFromEml } from "./extract/eml";
 import { extractFromDocx } from "./extract/docx";
-import { extractFromPdf } from "./extract/claude";
-import { parseSpreadsheet } from "./extract/xlsxCsv";
+import { extractFromPdf, extractFromText } from "./extract/claude";
+import { parseSpreadsheet, spreadsheetToText } from "./extract/xlsxCsv";
 import { mergeExtractions, SourcedExtraction } from "./extract/merge";
 import { ExtractedData } from "./schema";
 
@@ -36,11 +36,26 @@ function extensionOf(fileName: string): string {
   return fileName.toLowerCase().split(".").pop() ?? "";
 }
 
+function isEffectivelyEmpty(data: ExtractedData): boolean {
+  const hasProfileValue = Object.values(data.profile).some((v) => v !== null && v !== undefined && v !== "");
+  return !hasProfileValue && data.locations.length === 0;
+}
+
 async function runExtraction(client: Anthropic, buffer: Buffer, fileName: string): Promise<ExtractedData> {
   switch (extensionOf(fileName)) {
     case "xlsx":
-    case "csv":
-      return parseSpreadsheet(buffer, fileName);
+    case "csv": {
+      const deterministic = parseSpreadsheet(buffer, fileName);
+      // The deterministic parser only recognizes our own label scheme (the
+      // agency's own data-sheet template, or a Fact Sheet we generated
+      // ourselves being re-uploaded) - an arbitrary client-provided
+      // spreadsheet won't use that vocabulary and comes back empty. Any
+      // match it does find is trustworthy (label matching is exact, not
+      // fuzzy, so it can't produce a false positive) - only a total miss
+      // falls back to AI extraction on the sheet's flattened text.
+      if (!isEffectivelyEmpty(deterministic)) return deterministic;
+      return extractFromText(client, `Spreadsheet file: ${fileName}\n\n${spreadsheetToText(buffer)}`);
+    }
     case "pdf":
       return extractFromPdf(client, buffer);
     case "eml":

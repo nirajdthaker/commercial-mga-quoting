@@ -122,3 +122,16 @@ export function parseSpreadsheet(buffer: Buffer, _fileName: string): ExtractedDa
 
   return result;
 }
+
+/**
+ * Flattens every sheet to CSV text, for feeding an arbitrary spreadsheet
+ * (one that doesn't use our own label scheme, e.g. a client-provided
+ * document rather than the agency's own data-sheet template) through
+ * AI extraction instead of the label-matching parser above.
+ */
+export function spreadsheetToText(buffer: Buffer): string {
+  const workbook = XLSX.read(buffer, { type: "buffer", raw: true });
+  return workbook.SheetNames.map((name) => `Sheet: ${name}\n${XLSX.utils.sheet_to_csv(workbook.Sheets[name])}`).join(
+    "\n\n"
+  );
+}
