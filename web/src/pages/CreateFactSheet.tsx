@@ -6,8 +6,9 @@ import { db, storage } from "../firebase";
 import { useAuth } from "../context/AuthContext";
 import { INDUSTRIES } from "../config/industries";
 
-const ACCEPTED_EXTENSIONS = [".pdf", ".eml", ".xlsx", ".csv"];
+const ACCEPTED_EXTENSIONS = [".pdf", ".eml", ".xlsx", ".csv", ".docx"];
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
+const MAX_FILES = 10;
 
 function hasAcceptedExtension(fileName: string): boolean {
   const lower = fileName.toLowerCase();
@@ -20,41 +21,46 @@ function sanitizeFileName(fileName: string): string {
 
 type Status = "idle" | "submitting" | "received" | "error";
 
-export function Intake() {
+export function CreateFactSheet() {
   const { user, signOut } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [industryId, setIndustryId] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [receivedFileName, setReceivedFileName] = useState("");
-  const [receivedIndustryLabel, setReceivedIndustryLabel] = useState("");
+  const [receivedCount, setReceivedCount] = useState(0);
 
   const selectedIndustry = INDUSTRIES.find((i) => i.id === industryId);
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files?.[0] ?? null;
+  const handleFilesChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(e.target.files ?? []);
     setFileError(null);
-    setFile(null);
+    setFiles([]);
 
-    if (!selected) return;
+    if (selected.length === 0) return;
 
-    if (!hasAcceptedExtension(selected.name)) {
-      setFileError("Only PDF, EML, XLSX, or CSV files are accepted.");
+    if (selected.length > MAX_FILES) {
+      setFileError(`Select at most ${MAX_FILES} files at a time.`);
       return;
     }
-    if (selected.size > MAX_FILE_BYTES) {
-      setFileError("File is too large (25 MB max).");
+    const badFile = selected.find((f) => !hasAcceptedExtension(f.name));
+    if (badFile) {
+      setFileError(`"${badFile.name}" isn't a supported type. Only PDF, EML, XLSX, CSV, or Word (.docx) files are accepted.`);
       return;
     }
-    setFile(selected);
+    const bigFile = selected.find((f) => f.size > MAX_FILE_BYTES);
+    if (bigFile) {
+      setFileError(`"${bigFile.name}" is too large (25 MB max).`);
+      return;
+    }
+    setFiles(selected);
   };
 
   const resetForm = () => {
     setIndustryId("");
-    setFile(null);
+    setFiles([]);
     setFileError(null);
     setSubmitError(null);
     setStatus("idle");
@@ -63,37 +69,36 @@ export function Intake() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!user || !selectedIndustry || !file) return;
+    if (!user || !selectedIndustry || files.length === 0) return;
 
     setStatus("submitting");
     setSubmitError(null);
 
-    const path = `uploads/${user.uid}/${Date.now()}-${sanitizeFileName(file.name)}`;
-    const storageRef = ref(storage, path);
-
     try {
-      // File is stored under the signed-in user's own uid. Storage rules
-      // let any signed-in team member read it (needed for review) but only
-      // this user write to their own uploads/{uid}/ path.
-      await uploadBytes(storageRef, file, { contentType: file.type || undefined });
+      // Uploaded sequentially rather than in parallel purely to keep this
+      // simple - Fact Sheet uploads are a handful of files at most, so
+      // there's no real latency cost to doing them one at a time.
+      const uploaded: Array<{ fileName: string; filePath: string }> = [];
+      for (const file of files) {
+        const path = `uploads/${user.uid}/${Date.now()}-${sanitizeFileName(file.name)}`;
+        const storageRef = ref(storage, path);
+        await uploadBytes(storageRef, file, { contentType: file.type || undefined });
+        uploaded.push({ fileName: file.name, filePath: path });
+      }
 
-      // Creating this doc is what kicks off extraction — a Cloud Function
-      // watches for new submissions docs and picks this one up.
       await addDoc(collection(db, "submissions"), {
-        kind: "acord",
+        kind: "factSheet",
         industryId: selectedIndustry.id,
-        fileName: file.name,
-        filePath: path,
+        files: uploaded,
         uploadedBy: user.uid,
         uploadedAt: serverTimestamp(),
         status: "uploaded",
       });
 
-      setReceivedFileName(file.name);
-      setReceivedIndustryLabel(selectedIndustry.label);
+      setReceivedCount(uploaded.length);
       setStatus("received");
     } catch {
-      setSubmitError("Something went wrong submitting your file. Please try again.");
+      setSubmitError("Something went wrong submitting your files. Please try again.");
       setStatus("error");
     }
   };
@@ -103,16 +108,13 @@ export function Intake() {
       <div className="page-center">
         <div className="card">
           <h1>Received</h1>
-          <p className="subtitle">Your submission has been received.</p>
-          <dl className="summary-list">
-            <dt>Industry</dt>
-            <dd>{receivedIndustryLabel}</dd>
-            <dt>File</dt>
-            <dd>{receivedFileName}</dd>
-          </dl>
+          <p className="subtitle">
+            {receivedCount} file{receivedCount === 1 ? "" : "s"} received.
+          </p>
           <p className="fine-print">
             Extraction is running in the background. Once it's done, check the{" "}
-            <Link to="/review">review queue</Link> to confirm the extracted data.
+            <Link to="/review">review queue</Link> to confirm the merged data — any fields the
+            source documents disagreed on will be flagged for you to pick.
           </p>
           <button type="button" onClick={resetForm}>
             Submit another
@@ -127,12 +129,12 @@ export function Intake() {
       <form className="card" onSubmit={handleSubmit}>
         <div className="header-row">
           <div>
-            <h1>New Submission</h1>
+            <h1>Create Fact Sheet</h1>
             <p className="subtitle">Florida Coastal Insurance Agency</p>
           </div>
           <div className="header-actions">
-            <Link to="/fact-sheet" className="link-button">
-              Create Fact Sheet
+            <Link to="/" className="link-button">
+              ACORD intake
             </Link>
             <Link to="/review" className="link-button">
               Review queue
@@ -161,23 +163,28 @@ export function Intake() {
           ))}
         </select>
 
-        <label htmlFor="file">Submission file (PDF, EML, XLSX, or CSV)</label>
+        <label htmlFor="files">Client documents (PDF, EML, XLSX, CSV, or Word)</label>
         <input
-          id="file"
+          id="files"
           ref={fileInputRef}
           type="file"
-          accept=".pdf,.eml,.xlsx,.csv,application/pdf,message/rfc822,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
-          onChange={handleFileChange}
+          multiple
+          accept=".pdf,.eml,.xlsx,.csv,.docx,application/pdf,message/rfc822,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          onChange={handleFilesChange}
           required
         />
         {fileError && <div className="error-text">{fileError}</div>}
-        {file && !fileError && <div className="notice-text">Selected: {file.name}</div>}
+        {files.length > 0 && !fileError && (
+          <div className="notice-text">
+            Selected: {files.map((f) => f.name).join(", ")}
+          </div>
+        )}
 
         {submitError && <div className="error-text">{submitError}</div>}
 
         <button
           type="submit"
-          disabled={!selectedIndustry || !file || !!fileError || status === "submitting"}
+          disabled={!selectedIndustry || files.length === 0 || !!fileError || status === "submitting"}
         >
           {status === "submitting" ? "Submitting…" : "Submit"}
         </button>

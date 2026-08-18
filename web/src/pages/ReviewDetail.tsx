@@ -43,6 +43,11 @@ function groupBySection(fields: FieldDef[]): Array<[string, FieldDef[]]> {
 
 const PROFILE_SECTIONS = groupBySection(PROFILE_FIELDS);
 
+function conflictLabel(candidate: { value: FieldValue; source: string }): string {
+  const value = candidate.value === null || candidate.value === undefined || candidate.value === "" ? "(blank)" : String(candidate.value);
+  return `${value}  —  from ${candidate.source}`;
+}
+
 // Firestore rules allow retrying a "sending" submission once it's been
 // stuck for 6 minutes (sendSubmission's own timeout is 300s/5min) - this is
 // set a minute past that so the button never appears before the rule would
@@ -99,12 +104,37 @@ export function ReviewDetail() {
     );
   };
 
+  const applyConflictChoice = (field: FieldDef, value: FieldValue) => {
+    setProfile((prev) => ({ ...prev, [field.key]: value }));
+  };
+
+  const applyLocationConflictChoice = (index: number, field: FieldDef, value: FieldValue) => {
+    setLocations((prev) => prev.map((row, i) => (i === index ? { ...row, [field.key]: value } : row)));
+  };
+
   const addLocation = () => setLocations((prev) => [...prev, emptyLocationRow()]);
   const removeLocation = (index: number) =>
     setLocations((prev) => prev.filter((_, i) => i !== index));
 
+  // Every field a merge flagged with candidate values must be resolved
+  // (given a real, non-blank value) before this can be marked reviewed -
+  // the whole point of flagging a disagreement between source documents is
+  // that it gets a human decision before the Fact Sheet goes out.
+  const unresolvedConflicts =
+    Object.keys(submission?.fieldConflicts ?? {}).some((key) => {
+      const v = profile[key];
+      return v === null || v === undefined || v === "";
+    }) ||
+    (submission?.locationConflicts ?? []).some((rowConflicts, index) =>
+      Object.keys(rowConflicts).some((key) => {
+        const v = locations[index]?.[key];
+        return v === null || v === undefined || v === "";
+      })
+    );
+
   const save = async (markReviewed: boolean) => {
     if (!submissionId || !user) return;
+    if (markReviewed && unresolvedConflicts) return;
     setSaving(true);
     setSaveError(null);
     try {
@@ -159,14 +189,18 @@ export function ReviewDetail() {
     submission.sendStatus === "sending" &&
     !!submission.sendStartedAt &&
     now - submission.sendStartedAt.toDate().getTime() > STALE_SENDING_MS;
+  const isFactSheet = submission.kind === "factSheet";
+  const sourceFileNames = isFactSheet
+    ? (submission.files ?? []).map((f) => f.fileName).join(", ")
+    : submission.fileName;
 
   return (
     <div className="page-center">
       <div className="card card-wide">
         <div className="header-row">
           <div>
-            <h1>{industryLabel(submission.industryId)} Submission</h1>
-            <p className="subtitle">{submission.fileName}</p>
+            <h1>{industryLabel(submission.industryId)} {isFactSheet ? "Fact Sheet" : "Submission"}</h1>
+            <p className="subtitle">{sourceFileNames}</p>
           </div>
           <div className="header-actions">
             <Link to="/review" className="link-button">
@@ -195,7 +229,11 @@ export function ReviewDetail() {
             )}
 
             {isReviewed && submission.sendStatus === "sending" && !isStaleSending && (
-              <p className="notice-text">Filling the ACORDs and SOV and uploading them to Drive…</p>
+              <p className="notice-text">
+                {isFactSheet
+                  ? "Generating the Fact Sheet and uploading it to Drive…"
+                  : "Filling the ACORDs and SOV and uploading them to Drive…"}
+              </p>
             )}
             {isReviewed && submission.sendStatus === "sending" && isStaleSending && (
               <>
@@ -211,7 +249,7 @@ export function ReviewDetail() {
             )}
             {isReviewed && submission.sendStatus === "sent" && (
               <p className="notice-text">
-                Filled ACORDs and SOV uploaded to Drive
+                {isFactSheet ? "Fact Sheet uploaded to Drive" : "Filled ACORDs and SOV uploaded to Drive"}
                 {submission.sentAt ? ` on ${submission.sentAt.toDate().toLocaleString()}` : ""}.
               </p>
             )}
@@ -231,69 +269,117 @@ export function ReviewDetail() {
               <details key={section} className="field-section" open>
                 <summary>{section}</summary>
                 <div className="field-grid">
-                  {fields.map((field) => (
-                    <div key={field.key} className="field-grid-item">
-                      <label htmlFor={`profile-${field.key}`}>{field.label}</label>
-                      {field.type === "boolean" ? (
-                        <select
-                          id={`profile-${field.key}`}
-                          value={profile[field.key] === true ? "yes" : profile[field.key] === false ? "no" : ""}
-                          disabled={!canEdit}
-                          onChange={(e: ChangeEvent<HTMLSelectElement>) =>
-                            setProfile((prev) => ({
-                              ...prev,
-                              [field.key]: e.target.value === "" ? null : e.target.value === "yes",
-                            }))
-                          }
-                        >
-                          <option value="">—</option>
-                          <option value="yes">Yes</option>
-                          <option value="no">No</option>
-                        </select>
-                      ) : (
-                        <input
-                          id={`profile-${field.key}`}
-                          type={field.type === "number" ? "number" : "text"}
-                          value={inputValue(profile[field.key])}
-                          disabled={!canEdit}
-                          onChange={(e) => handleProfileChange(field, e.target.value)}
-                        />
-                      )}
-                    </div>
-                  ))}
+                  {fields.map((field) => {
+                    const candidates = submission.fieldConflicts?.[field.key];
+                    const isUnresolved = !!candidates && (profile[field.key] === null || profile[field.key] === undefined || profile[field.key] === "");
+                    return (
+                      <div key={field.key} className={`field-grid-item${isUnresolved ? " field-conflict" : ""}`}>
+                        <label htmlFor={`profile-${field.key}`}>{field.label}</label>
+                        {isUnresolved && (
+                          <div className="conflict-candidates">
+                            {candidates!.map((c, i) => (
+                              <button
+                                key={i}
+                                type="button"
+                                className="conflict-candidate"
+                                disabled={!canEdit}
+                                onClick={() => applyConflictChoice(field, c.value)}
+                              >
+                                {conflictLabel(c)}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {field.type === "boolean" ? (
+                          <select
+                            id={`profile-${field.key}`}
+                            value={profile[field.key] === true ? "yes" : profile[field.key] === false ? "no" : ""}
+                            disabled={!canEdit}
+                            onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+                              setProfile((prev) => ({
+                                ...prev,
+                                [field.key]: e.target.value === "" ? null : e.target.value === "yes",
+                              }))
+                            }
+                          >
+                            <option value="">—</option>
+                            <option value="yes">Yes</option>
+                            <option value="no">No</option>
+                          </select>
+                        ) : (
+                          <input
+                            id={`profile-${field.key}`}
+                            type={field.type === "number" ? "number" : "text"}
+                            value={inputValue(profile[field.key])}
+                            disabled={!canEdit}
+                            onChange={(e) => handleProfileChange(field, e.target.value)}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </details>
             ))}
 
             <h2 className="section-heading">SOV / Locations</h2>
             {locations.length === 0 && <p className="fine-print">No locations extracted.</p>}
-            {locations.map((row, index) => (
-              <div key={index} className="location-row">
-                <div className="field-grid">
-                  {LOCATION_FIELDS.map((field) => (
-                    <div key={field.key} className="field-grid-item">
-                      <label htmlFor={`loc-${index}-${field.key}`}>{field.label}</label>
-                      <input
-                        id={`loc-${index}-${field.key}`}
-                        type={field.type === "number" ? "number" : "text"}
-                        value={inputValue(row[field.key])}
-                        disabled={!canEdit}
-                        onChange={(e) => handleLocationChange(index, field, e.target.value)}
-                      />
-                    </div>
-                  ))}
+            {locations.map((row, index) => {
+              const rowConflicts = submission.locationConflicts?.[index];
+              return (
+                <div key={index} className="location-row">
+                  <div className="field-grid">
+                    {LOCATION_FIELDS.map((field) => {
+                      const candidates = rowConflicts?.[field.key];
+                      const isUnresolved = !!candidates && (row[field.key] === null || row[field.key] === undefined || row[field.key] === "");
+                      return (
+                        <div key={field.key} className={`field-grid-item${isUnresolved ? " field-conflict" : ""}`}>
+                          <label htmlFor={`loc-${index}-${field.key}`}>{field.label}</label>
+                          {isUnresolved && (
+                            <div className="conflict-candidates">
+                              {candidates!.map((c, i) => (
+                                <button
+                                  key={i}
+                                  type="button"
+                                  className="conflict-candidate"
+                                  disabled={!canEdit}
+                                  onClick={() => applyLocationConflictChoice(index, field, c.value)}
+                                >
+                                  {conflictLabel(c)}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          <input
+                            id={`loc-${index}-${field.key}`}
+                            type={field.type === "number" ? "number" : "text"}
+                            value={inputValue(row[field.key])}
+                            disabled={!canEdit}
+                            onChange={(e) => handleLocationChange(index, field, e.target.value)}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {canEdit && (
+                    <button type="button" className="link-button" onClick={() => removeLocation(index)}>
+                      Remove this location
+                    </button>
+                  )}
                 </div>
-                {canEdit && (
-                  <button type="button" className="link-button" onClick={() => removeLocation(index)}>
-                    Remove this location
-                  </button>
-                )}
-              </div>
-            ))}
+              );
+            })}
             {canEdit && (
               <button type="button" className="link-button" onClick={addLocation}>
                 + Add location
               </button>
+            )}
+
+            {canEdit && unresolvedConflicts && (
+              <p className="error-text">
+                Resolve every red-flagged field above (pick one of its candidate values, or type a
+                correction) before this can be marked reviewed.
+              </p>
             )}
 
             {saveError && <div className="error-text">{saveError}</div>}
@@ -303,7 +389,12 @@ export function ReviewDetail() {
                 <button type="button" onClick={() => void save(false)} disabled={saving}>
                   {saving ? "Saving…" : "Save draft"}
                 </button>
-                <button type="button" onClick={() => void save(true)} disabled={saving}>
+                <button
+                  type="button"
+                  onClick={() => void save(true)}
+                  disabled={saving || unresolvedConflicts}
+                  title={unresolvedConflicts ? "Resolve all flagged fields first" : undefined}
+                >
                   {saving ? "Saving…" : "Confirm & mark reviewed"}
                 </button>
               </div>

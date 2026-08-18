@@ -253,6 +253,37 @@ button:disabled {
   flex-direction: column;
 }
 
+.field-conflict label {
+  color: var(--color-error);
+  font-weight: 600;
+}
+
+.field-conflict input {
+  border-color: var(--color-error);
+}
+
+.conflict-candidates {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0 8px;
+}
+
+.conflict-candidate {
+  text-align: left;
+  background: #fbe2e0;
+  border: 1px solid var(--color-error);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.78rem;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.conflict-candidate:hover {
+  background: #f6cac6;
+}
+
 .location-row {
   border: 1px solid var(--color-border);
   border-radius: 8px;

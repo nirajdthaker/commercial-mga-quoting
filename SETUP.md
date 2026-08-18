@@ -265,6 +265,22 @@ yours differs (check it in `web/.env.local` /
   shows the error with a **Retry send** button. Liquor Liability (ACORD
   803) and Cyber (823/825) are out of scope until their fillable
   templates are sorted out.
+- **Fact Sheet** (`web/src/pages/CreateFactSheet.tsx`, `functions/src/extract/merge.ts`,
+  `functions/src/fill/factSheetXlsx.ts`): a second intake flow, upload
+  several client documents (PDF/EML/XLSX/CSV/Word) at once instead of one.
+  Each is extracted independently and merged into one profile/SOV; a field
+  two documents disagree on isn't guessed — it's left blank and flagged
+  red on the Review screen with every candidate value shown (and which
+  file it came from) for a human to pick. Marking reviewed is blocked
+  until every flagged field is resolved. The result is written as a flat
+  XLSX in the exact layout `functions/src/extract/xlsxCsv.ts` already
+  reads, so it can be re-uploaded straight into the regular ACORD Intake
+  page with no conversion step. No downstream automation watches this
+  folder (no manifest, no Power Automate) — the file landing in Drive is
+  the entire deliverable. **Needs setup**: create a "Hotel Fact Sheets"
+  Drive folder (same one-time step as the ACORD folder in step 6) and
+  paste its ID into `factSheetFolderId` in `functions/src/industries.ts`
+  (currently a placeholder).
 
 ## What's next
 

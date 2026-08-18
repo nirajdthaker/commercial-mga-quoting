@@ -3,6 +3,7 @@ import { AuthProvider } from "./context/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Login } from "./pages/Login";
 import { Intake } from "./pages/Intake";
+import { CreateFactSheet } from "./pages/CreateFactSheet";
 import { ReviewList } from "./pages/ReviewList";
 import { ReviewDetail } from "./pages/ReviewDetail";
 
@@ -17,6 +18,14 @@ export function App() {
             element={
               <ProtectedRoute>
                 <Intake />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/fact-sheet"
+            element={
+              <ProtectedRoute>
+                <CreateFactSheet />
               </ProtectedRoute>
             }
           />

@@ -31,6 +31,14 @@ function formatDate(submission: Submission): string {
   return submission.uploadedAt?.toDate?.().toLocaleString() ?? "—";
 }
 
+function fileDisplay(submission: Submission): string {
+  if (submission.kind === "factSheet") {
+    const names = (submission.files ?? []).map((f) => f.fileName);
+    return names.length > 0 ? names.join(", ") : "—";
+  }
+  return submission.fileName ?? "—";
+}
+
 export function ReviewList() {
   const { signOut } = useAuth();
   const navigate = useNavigate();
@@ -60,6 +68,9 @@ export function ReviewList() {
             <Link to="/" className="link-button">
               New submission
             </Link>
+            <Link to="/fact-sheet" className="link-button">
+              Create Fact Sheet
+            </Link>
             <button type="button" className="link-button" onClick={() => void signOut()}>
               Sign out
             </button>
@@ -73,8 +84,9 @@ export function ReviewList() {
           <table className="submission-table">
             <thead>
               <tr>
+                <th>Type</th>
                 <th>Industry</th>
-                <th>File</th>
+                <th>File(s)</th>
                 <th>Uploaded</th>
                 <th>Status</th>
               </tr>
@@ -89,8 +101,9 @@ export function ReviewList() {
                     className={reviewable ? "row-clickable" : undefined}
                     onClick={reviewable ? () => navigate(`/review/${id}`) : undefined}
                   >
+                    <td>{data.kind === "factSheet" ? "Fact Sheet" : "ACORD"}</td>
                     <td>{industryLabel(data.industryId)}</td>
-                    <td>{data.fileName}</td>
+                    <td>{fileDisplay(data)}</td>
                     <td>{formatDate(data)}</td>
                     <td>
                       <span className={`status-badge ${badgeClass}`}>{label}</span>
