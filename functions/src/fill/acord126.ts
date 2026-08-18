@@ -51,12 +51,15 @@ export async function fillAcord126(templateBytes: Buffer, profile: ProfileData):
   // Retroactive date only applies to Claims Made policies - Occurrence
   // policies have no concept of one, so it's only written when Claims
   // Made actually applies, not whenever a value happens to be present.
+  // Standard CGL is written on an Occurrence form by default - Claims Made
+  // is the exception (mostly seen on professional/cyber/EPLI lines), so
+  // silence defaults to Occurrence rather than leaving both unchecked.
   const trigger = String(profile.occurrenceVsClaimsMade ?? "").toLowerCase();
-  if (trigger.includes("occurrence")) {
-    setCheckbox(doc, FORM, "F[0].P1[0].Check3[0]", true);
-  } else if (trigger.includes("claims")) {
+  if (trigger.includes("claims")) {
     setCheckbox(doc, FORM, "F[0].P1[0].Check2[0]", true);
     setText(doc, FORM, "F[0].P1[0].Text128[0]", profile.retroactiveDate);
+  } else {
+    setCheckbox(doc, FORM, "F[0].P1[0].Check3[0]", true);
   }
 
   const class1 = splitClassification(profile.glClassification1 as string | null);
