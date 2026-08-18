@@ -7,8 +7,10 @@ import { logger } from "firebase-functions";
 import Anthropic from "@anthropic-ai/sdk";
 
 import { extractFromEml } from "./extract/eml";
+import { extractFromDocx } from "./extract/docx";
 import { extractFromPdf } from "./extract/claude";
 import { parseSpreadsheet } from "./extract/xlsxCsv";
+import { mergeExtractions, SourcedExtraction } from "./extract/merge";
 import { ExtractedData } from "./schema";
 
 export { sendSubmission } from "./send";
@@ -17,9 +19,16 @@ initializeApp();
 
 const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
 
-interface SubmissionDoc {
-  filePath: string;
+interface SubmissionFile {
   fileName: string;
+  filePath: string;
+}
+
+interface SubmissionDoc {
+  kind?: "acord" | "factSheet";
+  filePath?: string;
+  fileName?: string;
+  files?: SubmissionFile[];
   status: string;
 }
 
@@ -36,8 +45,33 @@ async function runExtraction(client: Anthropic, buffer: Buffer, fileName: string
       return extractFromPdf(client, buffer);
     case "eml":
       return extractFromEml(client, buffer);
+    case "docx":
+      return extractFromDocx(client, buffer);
     default:
       throw new Error(`Unsupported file type for extraction: ${fileName}`);
+  }
+}
+
+/** Downloads a file, runs extraction on it, and always deletes it afterward - same cleanup contract as the single-file path below. */
+async function extractAndCleanup(
+  client: Anthropic,
+  bucket: ReturnType<ReturnType<typeof getStorage>["bucket"]>,
+  file: SubmissionFile,
+  submissionId: string
+): Promise<ExtractedData> {
+  const [buffer] = await bucket.file(file.filePath).download();
+  try {
+    return await runExtraction(client, buffer, file.fileName);
+  } finally {
+    try {
+      await bucket.file(file.filePath).delete();
+    } catch (cleanupErr) {
+      logger.warn("Failed to delete source file after extraction", {
+        submissionId,
+        filePath: file.filePath,
+        cleanupErr,
+      });
+    }
   }
 }
 
@@ -49,15 +83,40 @@ export const extractSubmission = onDocumentCreated(
 
     const submission = snapshot.data() as SubmissionDoc;
     const submissionRef = snapshot.ref;
+    const submissionId = event.params.submissionId;
 
     try {
       await submissionRef.update({ status: "extracting" });
 
       const bucket = getStorage().bucket();
-      const [buffer] = await bucket.file(submission.filePath).download();
-
       const client = new Anthropic({ apiKey: anthropicApiKey.value() });
-      const extracted = await runExtraction(client, buffer, submission.fileName);
+
+      if (submission.kind === "factSheet") {
+        const files = submission.files ?? [];
+        const sources: SourcedExtraction[] = await Promise.all(
+          files.map(async (file) => ({
+            data: await extractAndCleanup(client, bucket, file, submissionId),
+            source: file.fileName,
+          }))
+        );
+        const merged = mergeExtractions(sources);
+
+        await submissionRef.update({
+          status: "extracted",
+          extractedProfile: merged.profile,
+          extractedLocations: merged.locations,
+          fieldConflicts: merged.profileConflicts,
+          locationConflicts: merged.locationConflicts,
+          extractedAt: FieldValue.serverTimestamp(),
+        });
+        return;
+      }
+
+      const buffer = await bucket
+        .file(submission.filePath!)
+        .download()
+        .then(([b]) => b);
+      const extracted = await runExtraction(client, buffer, submission.fileName!);
 
       await submissionRef.update({
         status: "extracted",
@@ -74,16 +133,16 @@ export const extractSubmission = onDocumentCreated(
       // it's caught and logged separately rather than falling into the
       // outer catch below.
       try {
-        await bucket.file(submission.filePath).delete();
+        await bucket.file(submission.filePath!).delete();
       } catch (cleanupErr) {
         logger.warn("Failed to delete source file after extraction", {
-          submissionId: event.params.submissionId,
+          submissionId,
           filePath: submission.filePath,
           cleanupErr,
         });
       }
     } catch (err) {
-      logger.error("Extraction failed", { submissionId: event.params.submissionId, err });
+      logger.error("Extraction failed", { submissionId, err });
       await submissionRef.update({
         status: "extraction_failed",
         extractionError: err instanceof Error ? err.message : String(err),

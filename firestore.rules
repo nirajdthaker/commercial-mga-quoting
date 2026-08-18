@@ -11,11 +11,22 @@ service cloud.firestore {
       // submissions, not just their own upload.
       allow read: if request.auth != null;
 
+      // Two shapes share this collection: a single-file ACORD submission
+      // (fileName/filePath) and a multi-file Fact Sheet (files, an array of
+      // {fileName, filePath}) - `kind` says which, and each shape only
+      // accepts its own field set.
       allow create: if request.auth != null
                     && request.resource.data.uploadedBy == request.auth.uid
                     && request.resource.data.status == 'uploaded'
-                    && request.resource.data.keys().hasOnly(
-                         ['industryId', 'fileName', 'filePath', 'uploadedBy', 'uploadedAt', 'status']
+                    && (
+                         (request.resource.data.kind == 'acord'
+                          && request.resource.data.keys().hasOnly(
+                               ['kind', 'industryId', 'fileName', 'filePath', 'uploadedBy', 'uploadedAt', 'status']
+                             ))
+                         || (request.resource.data.kind == 'factSheet'
+                             && request.resource.data.keys().hasOnly(
+                                  ['kind', 'industryId', 'files', 'uploadedBy', 'uploadedAt', 'status']
+                                ))
                        );
 
       // Team members may only correct extracted fields and mark a

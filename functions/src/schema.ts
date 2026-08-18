@@ -242,6 +242,15 @@ export interface ExtractedData {
   locations: LocationRow[];
 }
 
+/** One candidate value a merge saw for a field, and which source file gave it. */
+export interface FieldConflict {
+  value: FieldValue;
+  source: string;
+}
+
+/** fieldKey -> the distinct candidate values seen for it, when a merge couldn't pick one on its own. */
+export type ConflictMap = Record<string, FieldConflict[]>;
+
 function emptyRecord(fields: FieldDef[]): Record<string, FieldValue> {
   return Object.fromEntries(fields.map((f) => [f.key, null]));
 }

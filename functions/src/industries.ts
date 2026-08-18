@@ -2,6 +2,7 @@ import { AcordFormId } from "./fill/registry";
 
 export interface Industry {
   driveFolderId: string;
+  factSheetFolderId: string;
   forms: AcordFormId[];
 }
 
@@ -25,6 +26,9 @@ export const INDUSTRIES: Record<string, Industry> = {
   hotel: {
     // "Hotel ACORD Filled"
     driveFolderId: "1gb_OiP1NW32ZMukk348kABSB9TvL6vBj",
+    // TODO: replace with the real "Hotel Fact Sheets" Drive folder ID once
+    // it's created (same one-time step as the ACORD folder above).
+    factSheetFolderId: "REPLACE_WITH_HOTEL_FACT_SHEET_FOLDER_ID",
     forms: ["125", "126", "140"],
   },
 };
