@@ -36,26 +36,31 @@ function extensionOf(fileName: string): string {
   return fileName.toLowerCase().split(".").pop() ?? "";
 }
 
-function isEffectivelyEmpty(data: ExtractedData): boolean {
-  const hasProfileValue = Object.values(data.profile).some((v) => v !== null && v !== undefined && v !== "");
-  return !hasProfileValue && data.locations.length === 0;
-}
-
-async function runExtraction(client: Anthropic, buffer: Buffer, fileName: string): Promise<ExtractedData> {
+/**
+ * `preferAi` is true for Fact Sheet uploads: those are arbitrary
+ * client-provided documents, so a spreadsheet among them goes straight to
+ * AI extraction on its flattened text rather than the label-matching
+ * parser. That parser only understands our own field labels (the agency's
+ * own data-sheet template, or a Fact Sheet we generated ourselves being
+ * re-uploaded to ACORD intake) - a client spreadsheet with generic headers
+ * like "Address"/"City"/"State" can coincidentally match just enough of our
+ * SOV columns to look like a hit while still missing the real data, so
+ * "did the deterministic pass find anything" isn't a safe signal to gate
+ * on here.
+ */
+async function runExtraction(
+  client: Anthropic,
+  buffer: Buffer,
+  fileName: string,
+  preferAi: boolean
+): Promise<ExtractedData> {
   switch (extensionOf(fileName)) {
     case "xlsx":
-    case "csv": {
-      const deterministic = parseSpreadsheet(buffer, fileName);
-      // The deterministic parser only recognizes our own label scheme (the
-      // agency's own data-sheet template, or a Fact Sheet we generated
-      // ourselves being re-uploaded) - an arbitrary client-provided
-      // spreadsheet won't use that vocabulary and comes back empty. Any
-      // match it does find is trustworthy (label matching is exact, not
-      // fuzzy, so it can't produce a false positive) - only a total miss
-      // falls back to AI extraction on the sheet's flattened text.
-      if (!isEffectivelyEmpty(deterministic)) return deterministic;
-      return extractFromText(client, `Spreadsheet file: ${fileName}\n\n${spreadsheetToText(buffer)}`);
-    }
+    case "csv":
+      if (preferAi) {
+        return extractFromText(client, `Spreadsheet file: ${fileName}\n\n${spreadsheetToText(buffer)}`);
+      }
+      return parseSpreadsheet(buffer, fileName);
     case "pdf":
       return extractFromPdf(client, buffer);
     case "eml":
@@ -76,7 +81,7 @@ async function extractAndCleanup(
 ): Promise<ExtractedData> {
   const [buffer] = await bucket.file(file.filePath).download();
   try {
-    return await runExtraction(client, buffer, file.fileName);
+    return await runExtraction(client, buffer, file.fileName, true);
   } finally {
     try {
       await bucket.file(file.filePath).delete();
@@ -131,7 +136,7 @@ export const extractSubmission = onDocumentCreated(
         .file(submission.filePath!)
         .download()
         .then(([b]) => b);
-      const extracted = await runExtraction(client, buffer, submission.fileName!);
+      const extracted = await runExtraction(client, buffer, submission.fileName!, false);
 
       await submissionRef.update({
         status: "extracted",
