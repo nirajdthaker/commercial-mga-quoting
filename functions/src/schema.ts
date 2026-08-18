@@ -92,7 +92,6 @@ export const PROFILE_FIELDS: FieldDef[] = [
   field("GL — Limits", "Personal & Advertising Injury", "personalAdvertisingInjury"),
   field("GL — Limits", "Products-Completed Operations Aggregate", "productsCompletedOperationsAggregate"),
   field("GL — Limits", "Deductible / SIR", "glDeductibleSir"),
-  field("GL — Limits", "Coverage Trigger", "glCoverageTrigger"),
   field("GL — Limits", "Occurrence vs. Claims-Made", "occurrenceVsClaimsMade"),
   field("GL — Limits", "Retroactive Date (if claims-made)", "retroactiveDate"),
 

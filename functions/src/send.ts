@@ -35,6 +35,44 @@ function formatMonthDayYear(date: Date): string {
   return `${mm}/${dd}/${date.getFullYear()}`;
 }
 
+/** "$6,000,000" -> 6000000, so the SOV's TOTAL row SUM formula picks it up as a real number. */
+function parseMoney(value: unknown): number | string | null {
+  if (typeof value === "number") return value;
+  if (typeof value !== "string") return null;
+  const parsed = Number(value.replace(/[$,]/g, ""));
+  return Number.isFinite(parsed) && value.trim() !== "" ? parsed : value;
+}
+
+// The profile fields captured from ACORD 125/140's own premises section
+// (propertyAddress, buildingValue, etc.) describe the exact same building as
+// a single-location submission's SOV row - extraction reliably fills the
+// former (it maps directly onto the document's own layout) but is
+// inconsistent about also duplicating that data into `locations`, even with
+// explicit instructions to do so. Rather than continuing to rely on prompt
+// wording, derive the one row deterministically whenever locations comes
+// back empty but the profile clearly describes a property.
+function deriveSingleLocationFromProfile(profile: ProfileData): LocationRow[] {
+  if (!profile.propertyAddress) return [];
+  return [
+    {
+      locationNumber: "1",
+      address: profile.propertyAddress,
+      occupancy: profile.occupancy,
+      constructionType: profile.constructionType,
+      yearBuilt: profile.yearBuilt,
+      numberOfStories: profile.numberOfStories,
+      squareFootage: profile.totalArea,
+      protectionClass: profile.protectionClass,
+      sprinklered: profile.sprinklered,
+      buildingValue: parseMoney(profile.buildingValue),
+      bppValue: parseMoney(profile.bppValue),
+      businessIncomeValue: parseMoney(profile.businessIncomeExtraExpense),
+      roofTypeAge: profile.roofTypeAge,
+      floodZone: profile.floodZone,
+    },
+  ];
+}
+
 async function requireTemplate(
   drive: Awaited<ReturnType<typeof getDriveClient>>,
   name: string
@@ -71,7 +109,7 @@ export const sendSubmission = onDocumentUpdated(
 
   const submissionRef = event.data.after.ref;
   const submissionId = event.params.submissionId;
-  const locations = after.extractedLocations ?? [];
+  const extractedLocations = after.extractedLocations ?? [];
 
   // formCompletionDate isn't part of the reviewed schema - it's the ACORD
   // "date this form was completed" field, which every form has near the
@@ -81,6 +119,8 @@ export const sendSubmission = onDocumentUpdated(
     ...(after.extractedProfile ?? {}),
     formCompletionDate: after.uploadedAt ? formatMonthDayYear(after.uploadedAt.toDate()) : null,
   };
+
+  const locations = extractedLocations.length > 0 ? extractedLocations : deriveSingleLocationFromProfile(profile);
 
   try {
     // sendStartedAt lets both Firestore rules and the Review UI recognize a
