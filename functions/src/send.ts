@@ -2,7 +2,7 @@ import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { logger } from "firebase-functions";
 
-import { ACORD_FORMS } from "./fill/registry";
+import { ACORD_FORMS, AcordFormId } from "./fill/registry";
 import { fillSov } from "./fill/sov";
 import { INDUSTRIES } from "./industries";
 import {
@@ -101,17 +101,35 @@ export const sendSubmission = onDocumentUpdated(
 
     const drive = await getDriveClient();
 
-    const [formOutputs, templateSov] = await Promise.all([
+    const [templates, templateSov] = await Promise.all([
       Promise.all(
         industry.forms.map(async (formId) => {
-          const { templateName, fill } = ACORD_FORMS[formId];
-          const template = await requireTemplate(drive, templateName);
-          const filled = await fill(template, profile);
-          return { formId, filled };
+          const template = await requireTemplate(drive, ACORD_FORMS[formId].templateName);
+          return { formId, template };
         })
       ),
       requireTemplate(drive, "SOV Commercial.xlsx"),
     ]);
+
+    // Filled one at a time, deliberately not in parallel: every fillAcordNNN
+    // call shares the same cached mupdf WASM module instance (loadMupdf() in
+    // pdfHelpers.ts), and filling multiple PDFs concurrently against shared
+    // WASM memory risks one document's output silently corrupting another's
+    // - confirmed live, where a 126 came back byte-for-byte the right length
+    // but with a garbled, unopenable header despite every local (always
+    // sequential) test producing a valid file. The PDF-header check below is
+    // a second line of defense in case some other cause produces the same
+    // symptom.
+    const formOutputs: Array<{ formId: AcordFormId; filled: Uint8Array }> = [];
+    for (const { formId, template } of templates) {
+      const filled = await ACORD_FORMS[formId].fill(template, profile);
+      const header = Buffer.from(filled.slice(0, 5)).toString("latin1");
+      if (header !== "%PDF-") {
+        throw new Error(`Filled ACORD ${formId} does not look like a valid PDF (got header ${JSON.stringify(header)})`);
+      }
+      formOutputs.push({ formId, filled });
+    }
+
     const filledSov = await fillSov(templateSov, profile, locations);
 
     const filledFolderId = industry.driveFolderId;
